@@ -7,7 +7,7 @@
 
 from mininet.topo import Topo
 
-class Topology1( Topo ):
+class Topology_Loop( Topo ):
     def build( self ):
         host1 = self.addHost('h1')
         host2 = self.addHost('h2')
@@ -24,4 +24,4 @@ class Topology1( Topo ):
         self.addLink(switch2,switch3)
         self.addLink(switch1,switch3)
 
-topos = { 'topology1': ( lambda: Topology1() ) }
+topos = { 'topology_loop': ( lambda: Topology_Loop() ) }
