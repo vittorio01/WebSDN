@@ -2,7 +2,28 @@ from enum import Enum
 from ryu.lib.packet import packet,ipv4,ipv6, arp, ethernet, ether_types
 
 import networkx as nx
+import re 
 
+class AddressType(Enum):
+    MAC = 0 
+    IPv4 = 1
+    IPv6 = 2
+    UNKNOWN=-1
+
+    @staticmethod
+    def verify(address):
+        if not isinstance(address, str): return AddressType.UNKNOWN
+        ipv4_pattern = r"(\b25[0-5]|\b2[0-4][0-9]|\b[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}"
+        ipv6_pattern =  r"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))"
+        mac_pattern = r"^([0-9a-fA-F][0-9a-fA-F]:){5}([0-9a-fA-F][0-9a-fA-F])$"
+        if re.match(mac_pattern,address):
+            return AddressType.MAC 
+        elif re.match(ipv4_pattern,address):
+            return AddressType.IPv4 
+        elif re.match(ipv6_pattern,address):
+            return AddressType.IPv6 
+        return AddressType.UNKNOWN
+    
 #Link represent a general link between two devices in the network
 class Link:
     pass
@@ -123,7 +144,7 @@ class SHLink(Link):
         else:
             return False
         
-    #isLink(self,switch1,switch2) verify if this istance connects two switches together
+    #isLink(self,device1,device2) verify if this istance connects two switches together
     # device1, device2      ->  instances of Host and Switch (in any order)
     #returns -> True or False
     def isLink(self,device1,device2):
@@ -253,17 +274,56 @@ class Switch():
         return False
 
 
-#Host class represent an Host in thenetwork configuration
+
+#Host class represent an Host in the network configuration
 class Host():
-    def __init__(self,hostMAC,hostIP):
-        self.MAC=hostMAC    #MAC address of the host (string)
-        self.IP=hostIP      #IPv4 address of the host (string)
+    def __init__(self,hostMAC,hostIP1,hostIP2=None):
+        self.MAC=hostMAC       #MAC address of the host (string)
+        if (AddressType.verify(hostIP1)==AddressType.IPv4):
+            self.IPv4=hostIP1  #IPv4 address of the host (string)
+            self.IPv6=hostIP2  #IPv6 address of the host (string)
+        else:
+            self.IPv4=hostIP2  #IPv4 address of the host (string)
+            self.IPv6=hostIP1  #IPv6 address of the host (string)
+    
+    def hasIPv4Address(self):
+        if self.IPv4==None:
+            return False 
+        return True 
+
+    def hasIPv6Address(self):
+        if self.IPv6==None:
+            return False 
+        return True
+
+    def updateIPv4Address(self,newAddress):
+        if AddressType.verify(newAddress)==AddressType.IPv4:
+            self.IPv4=newAddress 
+            return True 
+        return False 
+
+    def updateIPv6Address(self,newAddress):
+        if AddressType.verify(newAddress)==AddressType.IPv6:
+            self.IPv4=newAddress 
+            return True 
+        return False
 
     def __eq__(self,host):
         if isinstance(host,Host):
-            if (host.IP==self.IP) and (host.MAC == self.MAC):
-                return True 
-        return False
+            if host.MAC != self.MAC:
+                return False 
+            if self.hasIPv4Address() and host.hasIPv4Address():
+                if self.IPv4!=self.IPv4:
+                    return False 
+            elif host.hasIPv4Address():
+                return False 
+            if self.hasIPv6Address() and host.hasIPv6Address():
+                if self.IPv6!=self.IPv6:
+                    return False 
+            elif host.hasIPv6Address():
+                return False 
+            return True 
+        return False 
 
 class NetworkLayout:
     MACdiscoveryAddress="ff:ff:ff:ff:ff:ff"     #discovery address in link protocol
@@ -285,11 +345,13 @@ class NetworkLayout:
     #host-> host instance to add
     #returns -> True if the host instance was not added before, False otherwise
     def addHost(self,host):
-        if host not in self.hosts:
-            self.hosts.append(host)
-            return True 
-        return False 
-    
+        for h in self.hosts:
+            if h.MAC==host.MAC:
+                h.updateIPv6Address(host.IPv6)
+                h.updateIPv4Address(host.IPv4)
+                return 
+        self.hosts.append(host)
+
     #addMACLink(self,link) adds a Link instance to the link list
     #link -> Link instance (SHLink or SSLink)
     #returns -> True if the link instance was not added before, False otherwise
@@ -314,38 +376,45 @@ class NetworkLayout:
     #returns -> host instance, None for a non correspondence
     def getHost(self,address):
         for host in self.hosts:
-            if host.IP==address or host.MAC==address:
-                return host 
+            if AddressType.verify(address)==AddressType.MAC:
+                if host.MAC==address:
+                    return host 
+            elif AddressType.verify(address)==AddressType.IPv4:
+                if host.IPv4==address:
+                    return host 
+            elif AddressType.verify(address)==AddressType.IPv6:
+                if host.IPv6==address:
+                    return host 
         return None
     
     #getDeviceByAddress(self,address) returns the corresponding network device from its MAC address (also IPv address for Hosts)
-    #addess -> MAC address or IPv4 address of the device
+    #address -> MAC address or IPv4 address of the device
     #returns -> Host instance (matching MAC or IP) or Switch (matching MAC address with one port) instance, None for a non correspondence 
     def getDeviceByAddress(self,address):
-        for host in self.hosts:
-            if host.MAC==address or host.IP==address:
-                return host
-        for switch in self.switches:
-            if address in switch.portMACs:
-                return switch 
-        return None
+        if AddressType.verify(address)!=AddressType.MAC: return False
+        host=self.getHost(address)
+        if host==None:
+            for switch in self.switches:
+                if address in switch.portMACs:
+                    return switch 
+            return None
+        return host
     
     #getDeviceByID(self,address) returns the corresponding network device from its datapath ID (for Hosts the MAC address is considered as an ID)
     #addess -> Id of the device
     #returns -> Host instance (matching MAC with ID) or Switch instance, None for a non correspondence 
     def getDeviceByID(self,deviceID):
+        if AddressType.verify(deviceID)==AddressType.MAC: return self.getHost(deviceID)
         for switch in self.switches:
             if switch.datapathID==deviceID:
                 return switch 
-        for host in self.hosts:
-            if host.MAC==deviceID:
-                return host 
-        return None
+        return None 
             
     #getLinkFromMACAddress(self,macAddress) returns a Link instance from the MAC address of one of the two devices
     #macAddress -> MAC address of one device
     #returns -> Link instance (SSLink or SHLink), None for a non correspondence
     def getLinkFromMACAddress(self,macAddress):
+        if AddressType.verify(macAddress)!=AddressType.MAC: return None
         for link in self.links:
             if link.isLinked(macAddress):
                 return link
@@ -358,6 +427,7 @@ class NetworkLayout:
         for link in self.links:
             if link.isLink(device1,device2):
                 return link
+        return None
 
     #forwardPacket(self,packetIn,switch,inputPort,outputPort=None,buffer_id=None) change the source MAC address with a specified port of the switch and forwards it
     #switch -> switch instance for forwarding
@@ -397,8 +467,10 @@ class NetworkLayout:
     #host -> instance of the destination Host
     #returns -> list of switch datapathIDs terminated with the host MAC address, None of the path does not exists 
     def getPath(self,switch,host):
-        graph=nx.Graph()
         destinationLink=self.getLinkFromMACAddress(host.MAC)
+        if destinationLink==None: return None
+
+        graph=nx.Graph()
         graph.add_edge(host.MAC,destinationLink.switch.datapathID,weight=destinationLink.getWeight())       
         for link in self.links:
             if isinstance(link,SSLink):

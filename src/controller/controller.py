@@ -5,17 +5,50 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER,CONFIG_DISPATCHER, HANDSHAKE_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3, ether
-from ryu.lib.packet import packet,ipv4,ipv6,icmp, arp, ethernet, ether_types
+from ryu.lib.packet import packet,ipv4,ipv6,tcp,udp,icmpv6, arp, ethernet, ether_types
+
 
 
 class Controller(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+    IPv6_ICMPv6 = 58
+    IPv4_ICMP = 1
+    IPv6_TCP=6
+    IPv6_UDP=17
+    verbosity=0
+    #verbosity level. Console info messages are filtered using a verbosity level that can be setted as an argument when launching the SDN controller. Higher values means more info messages.
+
 
     def __init__(self, *args, **kwargs):
         super(Controller, self).__init__(*args, **kwargs)
-
         #initializes the network layout instance
         self.network=NetworkLayout()                
+
+    def info(self, *args,type=0,verbosityLevel=0):
+        if (verbosityLevel>self.verbosity): return
+        if type==0:
+            #message type for controller messages
+            prefix="(C) "
+        elif type==1:
+            #message type for incoming packets
+            prefix="(P)   "
+        elif type==2:
+            #message type for link level messages
+            prefix="(L) "
+        elif type==3:
+            #message type for routing messages
+            prefix="(R)      "
+        elif type==4:
+            #message type for packet forwarding messages
+            prefix="(R)       --"
+        else:
+            prefix=""
+
+        sep=""
+        output = sep.join(map(str, args)) + "\n"
+        output=prefix+output.strip()
+        self.logger.info(output)
+
 
     #function to send a request of information to a switch 
     # switch -> Switch instance
@@ -35,7 +68,7 @@ class Controller(app_manager.RyuApp):
     def switch_configuration_handler(self, ev):
         switch=Switch(ev.msg)
         if self.network.addSwitch(switch)==True:
-            self.logger.info("Added Switch %s to network layout",switch.datapathID)
+            self.info("Added Switch ",switch.datapathID," to network layout",type=0,verbosityLevel=0)
             self.sendSwitchUpdatePortRequest(switch)
             switch.addFlowDirective(actions=[switch.parser.OFPActionOutput(switch.protocol.OFPP_CONTROLLER,switch.protocol.OFPCML_NO_BUFFER)])
     
@@ -44,7 +77,9 @@ class Controller(app_manager.RyuApp):
     def port_desc_stats_reply_handler(self, ev):
         switch=self.network.getSwitch(ev.msg.datapath.id)
         switch.updatePorts(ev.msg.body)
-        self.logger.info("received port status for switch %s ",switch.datapathID)
+        self.info("received port status for switch ",switch.datapathID,type=0,verbosityLevel=0)
+        for port in ev.msg.body:
+            self.info("port:",port.port_no,", ",port.hw_addr, ", ",port.state,", ",port.config,type=0,verbosityLevel=1)
 
     #handler for packet in  
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -64,22 +99,151 @@ class Controller(app_manager.RyuApp):
         #try to find the source device from the registered network layout
         sourceDevice=self.network.getDeviceByAddress(sourceMAC) 
         if isinstance(sourceDevice,Switch):
-            #if the source device is a controller, then adds a new switch to switch controller list
+            #if the source device is a controller, then adds a new switch to switch link in the network layout
             ssLink=SSLink(switch,sourceDevice,switchPortInMAC,sourceMAC)
             if self.network.addMACLink(ssLink)==True:
-                self.logger.info("-L> Added link from switch %s port %s to switch %s port %s",sourceDevice.datapathID,ssLink.getSwitchUsedPortID(sourceDevice),switch.datapathID,ssLink.getSwitchUsedPortID(switch))
+                self.info("Added link from switch ",sourceDevice.datapathID," port ",ssLink.getSwitchUsedPortID(sourceDevice)," to switch ",switch.datapathID," port ",ssLink.getSwitchUsedPortID(switch),type=2,verbosityLevel=0)
 
 
         if ethHeader.ethertype == ether_types.ETH_TYPE_IPV6:
             ipv6Header=packetIn.get_protocol(ipv6.ipv6)
             sourceIP=ipv6Header.src 
             destinationIP=ipv6Header.dst
+            if (ipv6Header.nxt==self.IPv6_ICMPv6): 
+                self.info("Received IPv6 (ICMPv6) packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=3)
+                return
+            self.info("Received IPv6 packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
+            sourceHost=self.network.getHost(sourceIP)
+            if sourceHost == None: 
+                #if the host is not registered in the networ layout, then a new host is added to the network layout
+                sourceHost=Host(sourceMAC,sourceIP)               
+                self.network.addHost(sourceHost)
+                self.network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
+                self.info("Added device ",sourceIP," to host list (linked to switch ",switch.datapathID,": ",sourceMAC," -> port ",switchPortInID," (",switchPortInMAC,")",type=2,verbosityLevel=0)
+            destinationHost=self.network.getHost(destinationIP)
+            if (destinationHost==None):
+                #if the destination host is not in the network layout, the packet will be flooded
+                maskSwitch=False
+                self.info("Destination host not in network layout, flooding...",type=3,verbosityLevel=2)
+                if isinstance(sourceDevice,Switch): maskSwitch=True
+                for port in switch.portIDs:
+                    if maskSwitch==True:
+                        #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
+                        switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                    else:
+                        #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
+                        if not (port==switchPortInID):
+                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                for port in switch.portIDs:
+                    if not (port==switchPortInID):
+                        self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                        self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
+            else: 
+                #if the destination host is already present in the network layout, a new path will be searched.
+                self.info("Destination found in network layout: starting shortest path algorthm...",type=3,verbosityLevel=3)
+                pathList=self.network.getPath(switch,destinationHost)
+                if pathList==None:
+                    #If the path cannot be enstablished, the packet will be flooded
+                    self.info("Path not found: Flooding...",type=3,verbosityLevel=3)
+                    maskSwitch=False
+                    if isinstance(sourceDevice,Switch): maskSwitch=True
+                    for port in switch.portIDs:
+                        if maskSwitch==True:
+                            #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
+                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                        else:
+                            #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
+                            if not (port==switchPortInID):
+                                switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                    for port in switch.portIDs:
+                        if not (port==switchPortInID):
+                            self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                            self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)               
+                else:
+                    self.info("Path found: ",str(pathList),type=3,verbosityLevel=3)
+                    deviceOut=self.network.getDeviceByID(pathList[1])
+                    linkOut=self.network.getLinkFromDevices(switch,deviceOut)
+                    switchOutPortID=linkOut.getSwitchUsedPortID(switch)
+                    switchOutPortMAC=linkOut.getSwitchUsedPortMAC(switch)
+                    self.info("Adding flow rule for device ",switch.datapathID,": IPv6 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
+                    
+                    #registering a flow rule for the current switch to avoid to launch again the algoithm
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=switchPortInID, ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=100)
 
-            #self.logger.info("received IPv6 packet in switch %s from %s (%s) to %s (%s)",switch.datapathID,sourceIP,sourceMAC, destinationIP,destinationMAC)
-            icmpheader=packetIn.get_protocol(icmp.icmp)
-            if icmpheader:
-                self.logger.info("ICMP packet!")
+                    #the packet is then forwarded to the output port
+                    self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                    self.info("Forwaring packet to port ",switchOutPortID,type=4,verbosityLevel=0)
+
+        if ethHeader.ethertype == ether_types.ETH_TYPE_IP:
+            ipv4Header=packetIn.get_protocol(ipv4.ipv4)
+            sourceIP=ipv4Header.src 
+            destinationIP=ipv4Header.dst
+
+            self.info("Received IPv4 packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
+            sourceHost=self.network.getHost(sourceIP)
+            if sourceHost == None: 
+                #if the host is not registered in the network layout, then a new host is added to the network layout
+                sourceHost=Host(sourceMAC,sourceIP)               
+                self.network.addHost(sourceHost)
+                self.network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
+                self.info("Added device ",sourceIP," to host list (linked to switch ",switch.datapathID,": ",sourceMAC," -> port ",switchPortInID," (",switchPortInMAC,")",type=2,verbosityLevel=0)
             
+            destinationHost=self.network.getHost(destinationIP)
+            if destinationHost==None:
+                #if the destination host is not registered in the network layout, the packet will be flooded
+                self.info("Destination host not in network layout, flooding...",type=3,verbosityLevel=3)
+                maskSwitch=False
+                if isinstance(sourceDevice,Switch): maskSwitch=True
+                for port in switch.portIDs:
+                    if maskSwitch==True:
+                        #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
+                        switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                    else:
+                        #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
+                        if not (port==switchPortInID):
+                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                for port in switch.portIDs:
+                    if not (port==switchPortInID):
+                        self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                        self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
+            else: 
+                #if the destination host is already present in the network layout, a new path will be searched.
+                self.info("Destination found in network layout: starting shortest path algorthm...",type=3,verbosityLevel=3)
+                pathList=self.network.getPath(switch,destinationHost)
+                if pathList==None:
+                    #If the path cannot be enstablished, the packet will be flooded
+                    self.info("Path not found: Flooding...",type=3,verbosityLevel=3)
+                    maskSwitch=False
+                    if isinstance(sourceDevice,Switch): maskSwitch=True
+                    for port in switch.portIDs:
+                        if maskSwitch==True:
+                            #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
+                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                        else:
+                            #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
+                            if not (port==switchPortInID):
+                                switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                        for port in switch.portIDs:
+                            if not (port==switchPortInID):
+                                self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                                self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
+                else:
+                    self.info("Path found: ",str(pathList),type=3,verbosityLevel=3)
+                    deviceOut=self.network.getDeviceByID(pathList[1])
+                    linkOut=self.network.getLinkFromDevices(switch,deviceOut)
+                    switchOutPortID=linkOut.getSwitchUsedPortID(switch)
+                    switchOutPortMAC=linkOut.getSwitchUsedPortMAC(switch)
+                    self.info("Adding flow rule for device ",switch.datapathID,": IPv4 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
+                    
+                    #registering a flow rule for the current switch to avoid to launch again the algoithm
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=switchPortInID, ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=100)
+
+                    #the packet is then forwarded to the output port
+                    self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                    self.info("Forwaring packet to port ",switchOutPortID,type=4,verbosityLevel=0)
+
+
+
 
         elif ethHeader.ethertype == ether_types.ETH_TYPE_ARP:
             #Specifications for ARP protocol: all network switches work like ARP proxies
@@ -95,17 +259,15 @@ class Controller(app_manager.RyuApp):
                 sourceHost=Host(sourceMAC,sourceIP)               
                 self.network.addHost(sourceHost)
                 self.network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
-                self.logger.info("-L> Added device %s to host list (linked to switch %s: %s -> port %s (%s) )",sourceIP,switch.datapathID,sourceMAC,switchPortInID,switchPortInMAC)
+                self.info("Added device ",sourceIP," to host list (linked to switch ",switch.datapathID,": ",sourceMAC," -> port ",switchPortInID," (",switchPortInMAC,")",type=2,verbosityLevel=0)
+
 
             if (arpOPCode==1):
                 #ARP request 
 
-                self.logger.info("-!> received ARP request packet in switch %s port %s from %s (%s) to %s",switch.datapathID,switchPortInID,sourceIP,sourceMAC, destinationIP)
+                self.info("Received ARP request packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
                 maskSwitch=False
                 if isinstance(sourceDevice,Switch): maskSwitch=True
-
-                
-               
                 for port in switch.portIDs:
                     if maskSwitch==True:
                         #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
@@ -119,38 +281,54 @@ class Controller(app_manager.RyuApp):
                 for port in switch.portIDs:
                     if not (port==switchPortInID):
                         self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
-                        self.logger.info("   -- Forward to port %s",port)
+                        self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
 
                 
             else:
                 #ARP response 
 
-                self.logger.info("-!> received ARP reply packet in switch %s port %s from %s (%s) to %s (%s)",switch.datapathID,switchPortInID,sourceIP,sourceMAC, destinationIP,destinationMAC)
+                self.info("Received ARP reply packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
                 destinationHost=self.network.getHost(destinationIP)
 
-                #The source device is always already registered at least a path should exists because the host has received the ARP request
-                self.logger.info("   -- Starting shortest path algorithm...")
+                self.info("Destination found in network layout: starting shortest path algorthm...",type=3,verbosityLevel=3)
                 pathList=self.network.getPath(switch,destinationHost)
                 if pathList==None:
-                    self.logger.info("   -- No path found, flooding")
+                    self.info("Path not found: Flooding...",type=3,verbosityLevel=3)
+                    maskSwitch=False
+                    if isinstance(sourceDevice,Switch): maskSwitch=True
+                    for port in switch.portIDs:
+                        if maskSwitch==True:
+                            #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
+                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=1,in_port=port,arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=1)
+                        else:
+                            #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
+                            if not (port==switchPortInID):
+                                switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=1,in_port=port,arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=1)
+                            
+                    #The packet then is flooded 
+                    for port in switch.portIDs:
+                        if not (port==switchPortInID):
+                            self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                            self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
+
                 else:
 
-                    self.logger.info("   -- PathFound: %s",str(pathList))
+                    self.info("Path found: ",str(pathList),type=3,verbosityLevel=3)
                     deviceOut=self.network.getDeviceByID(pathList[1])
                     linkOut=self.network.getLinkFromDevices(switch,deviceOut)
                     switchOutPortID=linkOut.getSwitchUsedPortID(switch)
                     switchOutPortMAC=linkOut.getSwitchUsedPortMAC(switch)
-                    self.logger.info("   -- Adding flow rule for device %s: ARP response packets from port %s forward to port %s (%s)",switch.datapathID,switchPortInID,switchOutPortID,switchOutPortMAC)
+                    self.info("Adding flow rule for device ",switch.datapathID,": ARP reply from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
                     
                     #registering a flow rule for the current switch to avoid to launch again the algoithm
                     switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=2,in_port=switchPortInID, arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=100)
 
                     #the packet is then forwarded to the output port
                     self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
-                    self.logger.info("   -- Forward to port %s",switchOutPortID)
+                    self.info("Forwaring packet to port ",switchOutPortID,type=4,verbosityLevel=0)
         else:
 
-            #not recognized packets
-            self.logger.info("-!> received not recognized packet (%s) in switch %s from %s to %s",ethHeader.ethertype,switch.datapathID,sourceMAC, destinationMAC)
+            #not managed packets
+            self.info("Received not managed packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,"): ethertype=",ethHeader.ethertype,type=1,verbosityLevel=0)
 
                 
