@@ -6,7 +6,7 @@ from ryu.controller.handler import MAIN_DISPATCHER,CONFIG_DISPATCHER, HANDSHAKE_
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3, ether
 from ryu.lib.packet import packet,ipv4,ipv6,tcp,udp,icmpv6, arp, ethernet, ether_types
-
+from ryu.lib import hub
 
 
 class Controller(app_manager.RyuApp):
@@ -15,7 +15,7 @@ class Controller(app_manager.RyuApp):
     IPv4_ICMP = 1
     IPv6_TCP=6
     IPv6_UDP=17
-    verbosity=0
+    verbosity=1
     #verbosity level. Console info messages are filtered using a verbosity level that can be setted as an argument when launching the SDN controller. Higher values means more info messages.
 
 
@@ -23,6 +23,7 @@ class Controller(app_manager.RyuApp):
         super(Controller, self).__init__(*args, **kwargs)
         #initializes the network layout instance
         self.network=NetworkLayout()                
+        self.switchMonitorThread = hub.spawn(self.switchStatisticsMonitor)
 
     def info(self, *args,type=0,verbosityLevel=0):
         if (verbosityLevel>self.verbosity): return
@@ -53,9 +54,21 @@ class Controller(app_manager.RyuApp):
     #function to send a request of information to a switch 
     # switch -> Switch instance
     def sendSwitchUpdatePortRequest(self,switch):
-
         #updates port informations for a specific switch
         switch.datapath.send_msg(switch.parser.OFPPortDescStatsRequest(switch.datapath))
+
+    def sendSwitchPortStatusRequest(self,switch):
+        switch.datapath.send_msg(switch.parser.OFPPortStatsRequest(switch.datapath, 0, switch.protocol.OFPP_ANY))
+
+    def switchStatisticsMonitor(self):
+        hub.sleep(10)
+        while True:
+            for switch in self.network.switches:
+                self.sendSwitchUpdatePortRequest(switch)
+            hub.sleep(1)
+            for switch in self.network.switches:
+                self.sendSwitchPortStatusRequest(switch)
+            hub.sleep(9)  # Intervallo tra le richieste (10 secondi)
 
     #handler for switch error messages
     @set_ev_cls(ofp_event.EventOFPErrorMsg,[HANDSHAKE_DISPATCHER, CONFIG_DISPATCHER, MAIN_DISPATCHER])
@@ -70,16 +83,50 @@ class Controller(app_manager.RyuApp):
         if self.network.addSwitch(switch)==True:
             self.info("Added Switch ",switch.datapathID," to network layout",type=0,verbosityLevel=0)
             self.sendSwitchUpdatePortRequest(switch)
+            switch.datapath.send_msg(switch.parser.OFPSetConfig(switch.datapath, switch.protocol.OFPC_FRAG_NORMAL, switch.protocol.OFPCML_NO_BUFFER))
+
+            packet_in_mask = 1 << switch.protocol.OFPR_NO_MATCH
+            port_status_mask = (1 << switch.protocol.OFPPR_ADD | 1 << switch.protocol.OFPPR_DELETE | 1 << switch.protocol.OFPPR_MODIFY)
+            flow_removed_mask = (1 << switch.protocol.OFPRR_IDLE_TIMEOUT | 1 << switch.protocol.OFPRR_HARD_TIMEOUT | 1 << switch.protocol.OFPRR_DELETE)
+            switch.datapath.send_msg(switch.parser.OFPSetAsync(switch.datapath,[packet_in_mask, 0],[port_status_mask, 0],[flow_removed_mask, 0]))
+
             switch.addFlowDirective(actions=[switch.parser.OFPActionOutput(switch.protocol.OFPP_CONTROLLER,switch.protocol.OFPCML_NO_BUFFER)])
     
     #handler for port descriptions
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
     def port_desc_stats_reply_handler(self, ev):
+        self.network.updateSwitchDescriptions(ev.msg.datapath.id,ev.msg)
+        self.info("Received port description for switch ",ev.msg.datapath.id,type=0,verbosityLevel=0)
         switch=self.network.getSwitch(ev.msg.datapath.id)
-        switch.updatePorts(ev.msg.body)
-        self.info("received port status for switch ",switch.datapathID,type=0,verbosityLevel=0)
         for port in ev.msg.body:
-            self.info("port:",port.port_no,", ",port.hw_addr, ", ",port.state,", ",port.config,type=0,verbosityLevel=1)
+            if (port.state==switch.protocol.OFPPS_LINK_DOWN):
+                self.info("port:",port.port_no,", ",port.hw_addr, ", LINK DOWN, ",port.config,type=0,verbosityLevel=1)
+            else:
+                self.info("port:",port.port_no,", ",port.hw_addr, ", LINK UP, ",port.config,type=0,verbosityLevel=1)
+
+    '''
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def port_status_handler(self, ev):
+        self.info("Received switch status message",type=0,verbosityLevel=0)
+        self.network.updateSwitchPort(ev.msg.datapath.id,ev.msg)
+        port=ev.msg.desc
+        
+        if ev.msg.reason==ev.msg.datapath.ofproto.OFPPR_ADD:
+            self.info("Added port to switch ",ev.msg.datapath.id,type=0,verbosityLevel=0)
+            self.info("Port:",port.port_no,", ",port.hw_addr, ", ",port.state,", ",port.config,type=0,verbosityLevel=1)
+        elif ev.msg.reason==ev.msg.datapath.ofproto.OFPPR_DELETE:
+            self.info("Removed port in switch ",ev.msg.datapath.id,type=0,verbosityLevel=0)
+        elif ev.msg.reason==ev.msg.datapath.ofproto.OFPPR_ADD:
+            self.info("Modified port in switch ",ev.msg.datapath.id,type=0,verbosityLevel=0)
+            self.info("Port:",port.port_no,", ",port.hw_addr, ", ",port.state,", ",port.config,type=0,verbosityLevel=1)
+    '''
+
+    @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
+    def port_status_handler(self, ev):
+        self.network.updateSwitchStatistics(ev.msg.datapath.id,ev.msg)
+        self.info("Received port status for switch ",ev.msg.datapath.id,type=0,verbosityLevel=2)
+        for port in ev.msg.body:
+            self.info("port:",port.port_no,", RX pkts: ",port.rx_packets, ", TX pkts: ",port.tx_packets,", RX bytes: ",port.rx_bytes,", TX bytes: ",port.tx_bytes,type=0,verbosityLevel=3)
 
     #handler for packet in  
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)

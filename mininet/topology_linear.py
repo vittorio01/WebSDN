@@ -12,8 +12,8 @@ class Topology_Linear( Topo ):
         host1 = self.addHost('h1')
         host2 = self.addHost('h2')
 
-        switch1 = self.addSwitch('s1')
-        switch2 = self.addSwitch('s2')
+        switch1 = self.addSwitch('s1',protocols='OpenFlow13')
+        switch2 = self.addSwitch('s2',protocols='OpenFlow13')
 
         self.addLink(host1,switch1)
         self.addLink(host2,switch2)

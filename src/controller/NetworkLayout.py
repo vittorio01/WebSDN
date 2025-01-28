@@ -4,6 +4,7 @@ from ryu.lib.packet import packet,ipv4,ipv6, arp, ethernet, ether_types
 import networkx as nx
 import re 
 
+#AddressType is a static class used to distinguish the address type (MAC,IPv4 or IPv6) using REGHEX notation
 class AddressType(Enum):
     MAC = 0 
     IPv4 = 1
@@ -26,7 +27,9 @@ class AddressType(Enum):
     
 #Link represent a general link between two devices in the network
 class Link:
-    pass
+    DOWN=0
+    UP=1
+    ORPHANED=-1
 
 #SSLink represents a link between two switches
 class SSLink(Link):
@@ -35,6 +38,30 @@ class SSLink(Link):
         self.switch2=switch2            #switch 2 instance
         self.switchMAC1=switchMAC1      #switch 1 used port MAC address
         self.switchMAC2=switchMAC2      #switch 2 used port MAC address
+        self.linkStatus=Link.UP
+
+    #updateStatus() verify the variable linkStatus in base of the switches port's current status. 
+    #The class can mark itself as UP, DOWN or ORPHANED (means that is no more present in the network and should be removed)
+    def updateStatus(self):
+        portIndex1=None 
+        portIndex2=None 
+        for index in range(len(self.switch1.portMACs)):
+            if self.switch1.portMACs[index]==self.switchMAC1:
+                portIndex1=index 
+                break 
+        for index in range(len(self.switch2.portMACs)):
+            if self.switch2.portMACs[index]==self.switchMAC2:
+                portIndex2=index 
+                break 
+
+        if portIndex1==None or portIndex2==None:
+            self.linkStatus=Link.ORPHANED 
+            return 
+        
+        if self.switch1.portStats[portIndex1]==self.switch1.protocol.OFPPS_LIVE and self.switch2.portStats[portIndex2]==self.switch2.protocol.OFPPS_LIVE:
+            self.linkStatus=Link.UP 
+            return 
+        self.linkStatus=Link.DOWN
 
     #getLinkedMACAddress return the MAC address of the device linked with the specified MAC address. 
     #In this case, given the MAC address of the switch port, the function return the mac address of the other connected switch port.
@@ -104,6 +131,24 @@ class SHLink(Link):
         self.switch=switch                  #Switch instance
         self.host=host                      #Host instance
         self.switchMACPort=switchMACPort    #Switch's used port MAC address 
+        self.linkStatus=Link.UP
+
+    #updateStatus() verify the variable linkStatus in base of the switch port current status. 
+    #The class can mark itself as UP, DOWN or ORPHANED (means that is no more present in the network and should be removed)
+    def updateStatus(self):
+        portIndex=None 
+        for index in range(len(self.switch.portMACs)):
+            if self.switch.portMACs[index]==self.switchMACPort:
+                portIndex=index 
+                break 
+        if portIndex==None:
+            self.linkStatus=Link.ORPHANED 
+            return 
+        if self.switch.portStats[portIndex]==self.switch.protocol.OFPPS_LIVE:
+            self.linkStatus=Link.UP 
+            return 
+        self.linkStatus=Link.DOWN
+    
 
     #getLinkedMACAddress return the MAC address of the device linked with the specified MAC address. 
     #In this case, given the MAC address of the switch's used port or the MAC address of the Host, the function return the mac address of the other connected device.
@@ -170,6 +215,19 @@ class SHLink(Link):
                 return True
         return False
 
+#PortStatistics is a class designed to memorize switch statistics 
+class PortStatistics():
+    def __init__(self):
+        self.RXPkts=0
+        self.TXPkts=0
+        self.RXBytes=0
+        self.TXBytes=0
+    def updateValues(self,RXPkts,TXPkts,RXBytes,TXBytes):
+        self.RXPkts=RXPkts 
+        self.TXPkts=TXPkts 
+        self.RXBytes=RXBytes 
+        self.TXBytes=TXBytes
+
 #Switch represents a switch in the network
 class Switch():
     openflow_port=4294967294        #default port used by openflow 
@@ -179,6 +237,8 @@ class Switch():
         self.portMACs=[]                                    #list of port MAC addresses (strings)
         self.portStats=[]                                   #list of port status (OFPPort state value)
         self.portConfigs=[]                                 #list of port configurations (OFPPort config value)
+        self.portStatistics=[]                              #list of statistics per port 
+        self.portSpeeds=[]                                  #list of port speeds
 
         self.datapath=switchMessage.datapath                #switch's datapath instance 
         self.protocol=self.datapath.ofproto                 #switch's openflow protocol 
@@ -187,18 +247,59 @@ class Switch():
         self.switchCapabilities=switchMessage.capabilities  #switch's capabilities class (OFPSwitchFeatures)
 
     #updatePorts(self,portDescriptions) update port information and status
-    #portDescription -> istance of the message's body from the ofp_event.EventOFPPortDescStatsReply handler (msg.body)
-    def updatePorts(self,portDescriptions):
-        self.portMACs.clear()
+    #portDescription -> istance of the message from the ofp_event.EventOFPPortDescStatsReply handler (msg.body)
+    def updatePortDescriptions(self,portDescriptionsMessage):
+        self.portIDs.clear()
         self.portMACs.clear()
         self.portStats.clear()
         self.portConfigs.clear()
-        for port in portDescriptions:
+        self.portSpeeds.clear()
+        self.portStatistics.clear()
+        for port in portDescriptionsMessage.body:
             if not (port.port_no==self.openflow_port):
                 self.portIDs.append(port.port_no)
                 self.portMACs.append(port.hw_addr)
                 self.portStats.append(port.state)
                 self.portConfigs.append(port.config) 
+                self.portStatistics.append(PortStatistics())
+                self.portSpeeds.append(port.curr_speed)
+
+    #updatePortStatistics(self,portStatisticsMessage) update statistics of a certain port using a message 
+    #portStatisticsMessage -> istance of the message from the ofp_event.EventOFPPortStatsReply handler (msg.body)
+    def updatePortStatistics(self,portStatisticsMessage):
+        for portInfo in portStatisticsMessage.body:
+            for portIndex in range(len(self.portIDs)):
+                if self.portIDs[portIndex]==portInfo.port_no:
+                    self.portStatistics[portIndex].updateValues(portInfo.rx_packets,portInfo.tx_packets,portInfo.rx_bytes,portInfo.tx_bytes)
+
+    '''
+    def updatePortStatus(self,portStatusMessage):
+        port=portStatusMessage.desc
+
+        if portStatusMessage.reason==self.protocol.OFPPR_ADD:
+            self.portIDs.append(port.port_no)
+            self.portMACs.append(port.hw_addr)
+            self.portStats.append(port.state)
+            self.portConfigs.append(port.config) 
+            self.portStatistics.append(PortStatistics())
+        elif portStatusMessage.reason==self.protocol.OFPPR_DELETE:
+            for portIndex in range(len(self.portIDs)):
+                if self.portIDs[portIndex]==port.port_no:
+                    self.portIDs.pop(portIndex)
+                    self.portMACs.pop(portIndex)
+                    self.portStats.pop(portIndex)
+                    self.portConfigs.pop(portIndex)
+                    self.portStatistics.pop(portIndex)
+                    break
+        elif portStatusMessage.reason==self.protocol.OFPPR_MODIFY:
+            for portIndex in range(len(self.portIDs)):
+                if self.portIDs[portIndex]==port.port_no:
+                    self.portMACs[portIndex]=port.hw_addr
+                    self.portStats[portIndex]=port.state
+                    self.portConfigs[portIndex]=port.config
+                    break
+    '''
+
 
     #addFlowDirective(self,actions=None,match=None,priority=0,buffer_id=None,idleTimeout=0,hardTimeout=0) adds a directive to the flow table of the switch
     #actions -> list of openflow actions 
@@ -473,7 +574,7 @@ class NetworkLayout:
         graph=nx.Graph()
         graph.add_edge(host.MAC,destinationLink.switch.datapathID,weight=destinationLink.getWeight())       
         for link in self.links:
-            if isinstance(link,SSLink):
+            if isinstance(link,SSLink) and link.linkStatus==Link.UP:    #only links marked as UP are added to the graph
                 graph.add_edge(link.switch1.datapathID,link.switch2.datapathID,weight=link.getWeight())
         try:
             devicePath = nx.dijkstra_path(graph, source=switch.datapathID, target=host.MAC, weight='weight')
@@ -481,4 +582,30 @@ class NetworkLayout:
         except nx.NetworkXNoPath:
             return None
 
-
+    #the function updateSwitchDescriptions(self,switchID,message) search the switch with the same value of switch datapath ID and launch the updatePortDescriptions method
+    def updateSwitchDescriptions(self,switchID,message):
+        switch=self.getSwitch(switchID)
+        switch.updatePortDescriptions(message)
+        for link in self.links:                         #call updateStatus() for every registered links in the network 
+            if link.getSwitchUsedPortID(switch)!=None:
+                link.updateStatus()
+        for link in self.links:                         #removes all link marked as ORPHANED
+            if link.linkStatus==Link.ORPHANED:
+                self.links.remove(link)
+        
+    #the function updateSwitchStatistics(self,switchID,message) search the switch with the same value of switch datapath ID and launch the updatePortDescriptions method
+    def updateSwitchStatistics(self,switchID,message):
+        switch=self.getSwitch(switchID)
+        switch.updatePortStatistics(message)
+        
+    '''
+    def updateSwitchPort(self,switchID,message):
+        switch=self.getSwitch(switchID)
+        switch.updatePortStatus(message)
+        
+        linkList=[]
+        for link in self.links:
+            if link.getSwitchUsedPortID(switch)!=None:
+                linkList.append(link)
+        
+    '''
