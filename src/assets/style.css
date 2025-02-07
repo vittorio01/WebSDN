@@ -1,0 +1,140 @@
+#hBar {
+    height: 1px;
+    background-color: gray;
+    cursor: ns-resize;
+    box-sizing: content-box;
+    z-index: 10;
+    position: relative; /* 🔹 Importante per posizionare il ::before */
+}
+
+#vBar {
+    width: 1px;
+    background-color: gray;
+    cursor: ew-resize;
+    box-sizing: content-box;
+    z-index: 10;
+    position: relative; /* 🔹 Importante per posizionare il ::before */
+}
+
+#hBar::before {
+    content: "";
+    position: absolute;
+    top: -8px; bottom: -8px; /* 🔹 Aumenta area di interazione */
+    left: 0; right: 0;
+    background: transparent; /* 🔹 Invisibile */
+    display: block;
+    pointer-events: all;
+}
+
+#vBar::before {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    left: -8px; right: -8px; /* 🔹 Aumenta area di interazione */
+    background: transparent; /* 🔹 Invisibile */
+    display: block;
+    pointer-events: all;
+}
+
+#listTitle {
+    text-align: center;
+    margin: auto;
+    padding: 0px;
+    font-size: 15px;
+}
+
+#topBarText {
+    color: white;
+    font-weight: 500;
+    font-size: 20px;
+    margin-left: 0;
+    text-align: center;
+    flex-grow: 1;
+}
+
+#rightDiv {
+    height: 100%; 
+    width: 60%;
+    margin: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.05s ease-in-out;
+}
+
+#topBarDiv {
+    width: 100%;
+    height: 50px;
+    margin: 0;
+    background-color: #0B2027;
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+    padding: 0 10px;
+    transition: width 0.05s ease-in-out;
+}
+
+#topologyDiv {
+    height: 90%; 
+    width: 100%;
+    margin: 0;
+    transition: width 0.05s ease-in-out;
+}
+
+#deviceListDiv {
+    height: 40%; 
+    width: 100%;
+    transition: height 0.05s ease-in-out;
+}
+
+#toggleButton {
+    padding: 10px 15px;
+    color: white;
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+#deviceDetailsDiv {
+    height: 60%; 
+    width: 100%;
+    transition: height 0.05s ease-in-out;
+}
+
+#detailsDiv {
+    height: 100%; 
+    width: 40%;
+    margin: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.05s ease-in-out;
+}
+
+#topology {
+    padding: 0;
+    margin: 0;
+}
+
+#contentsDiv {
+    display: flex;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+body {
+    background-color: #F5F3F5;
+    margin: 0px;
+    font-family: "Garamond", serif;
+    
+}
+#pageDiv {
+    height: 100vh;
+    width: 100vw;
+}
+
+#deviceListGrid {
+    width: 100%;
+    height: 100%;
+}

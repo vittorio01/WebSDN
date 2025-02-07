@@ -3,7 +3,7 @@ from enum import Enum
 class OpenflowProtocolsDescription(Enum): 
     OF10=0
     OF12=2
-    OF13=3
+    OF13=3 
     OF14=4
     OF15=5
 
