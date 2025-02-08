@@ -1,6 +1,66 @@
 from ryu.ofproto import ofproto_v1_0,ofproto_v1_2,ofproto_v1_3,ofproto_v1_4
 from NetworkLayout import * 
-from NetworkDescription import *
+
+from enum import Enum
+import json 
+
+class OpenflowProtocolsDescription(Enum): 
+    OF10="OpenFlow 1.0"
+    OF12="OpenFlow 1.2"
+    OF13="OpenFlow 1.3"
+    OF14="OpenFlow 1.4"
+    OF15="OpenFlow 1.5"
+
+class SwitchPortStatisticsDescription():
+    def __init__(self):
+        self.RXPkts=0
+        self.TXPkts=0
+        self.RXBytes=0
+        self.TXBytes=0
+
+class SwitchDescription:
+    def __init__(self):
+        self.portIDs=[]                                     #list of port IDs (strings)
+        self.portMACs=[]                                    #list of port MAC addresses (strings)
+        self.portStats=[]                                   #list of port status (OFPPort state value)
+        self.portStatistics=[]                              #list of statistics per port 
+        self.portSpeeds=[]                                  #list of port speeds
+
+        self.protocol=None                                  #switch's openflow protocol 
+        self.datapathID=None                                #switch's datapath ID (string)
+        self.switchCapabilities=None                        #switch's capabilities class (OFPSwitchFeatures)
+
+class HostDescription:
+   def __init__(self,hostMAC,hostIPv4,hostIPv6=None):
+        self.MAC=hostMAC        #MAC address of the host (string)
+        self.IPv4=hostIPv4      #IPv4 address of the host (string)
+        self.IPv6=hostIPv6      #IPv6 address of the host (string)
+
+class LinkDescription:
+    DOWN="Down"
+    UP="Up"
+    ORPHANED="Orphaned"
+
+class SSLinkDescription(LinkDescription):
+    def __init__(self,switch1,switch2,switchMAC1,switchMAC2,linkStatus):
+        self.switch1=switch1            #SwitchDescription 1 instance
+        self.switch2=switch2            #switchDescription 2 instance
+        self.switchMAC1=switchMAC1      #switchDescription 1 used port MAC address
+        self.switchMAC2=switchMAC2      #switchDescription 2 used port MAC address
+        self.linkStatus=linkStatus
+
+class SHLinkDescription(LinkDescription):
+    def __init__(self,switch,host,switchMACPort,linkStatus):
+        self.switch=switch                  #SwitchDescription instance
+        self.host=host                      #HostDescription instance
+        self.switchMACPort=switchMACPort    #Switch's used port MAC address 
+        self.linkStatus=linkStatus
+
+class NetworkLayoutDescription:
+    def __init__(self):     
+        self.switches=[]                    #list of SwitchDescription instances
+        self.hosts=[]                       #list of HostDescription instances
+        self.links=[]                       #list of LinkDescription instances
 
 class NetworkLayoutParser():
     @staticmethod
@@ -51,7 +111,7 @@ class NetworkLayoutParser():
         return False 
     
     @staticmethod
-    def parseNetworkLayout(NLClass):
+    def to_dict(NLClass):
         networkLayoutDescription=NetworkLayoutDescription()
         for switch in NLClass.hosts:
             networkLayoutDescription.switches.append(NetworkLayoutParser.parseSwitchDescription(switch))
@@ -89,5 +149,41 @@ class NetworkLayoutParser():
                     shlink.linkStatus=LinkDescription.UP 
                 else:
                     shlink.linkStatus=LinkDescription.ORPHANED  
-                    
-        return networkLayoutDescription
+        return {
+            "switches": [
+                {
+                    "datapathID": sw.datapathID,
+                    "protocol": sw.protocol,
+                    "portIDs": sw.portIDs,
+                    "portMACs": sw.portMACs,
+                    "portStats": sw.portStats,
+                    "portSpeeds": sw.portSpeeds,
+                }
+                for sw in networkLayoutDescription.switches
+            ],
+            "hosts": [
+                {
+                    "MAC": host.MAC,
+                    "IPv4": host.IPv4,
+                    "IPv6": host.IPv6 if host.IPv6 else "N/A",
+                }
+                for host in networkLayoutDescription.hosts
+            ],
+            "links": [
+                {
+                    "switch1": link.switch1.datapathID,
+                    "switch2": link.switch2.datapathID,
+                    "switchMAC1": link.switchMAC1,
+                    "switchMAC2": link.switchMAC2,
+                    "linkStatus": link.linkStatus,
+                }
+                if isinstance(link, SSLinkDescription)
+                else {
+                    "switch": link.switch.datapathID,
+                    "host": link.host.MAC,
+                    "switchMACPort": link.switchMACPort,
+                    "linkStatus": link.linkStatus,
+                }
+                for link in networkLayoutDescription.links
+            ],
+        }

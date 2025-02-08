@@ -7,7 +7,7 @@ import dash_draggable as draggable
 import requests  # Per recuperare la topologia SDN
 from NetworkDescription import *
 
-app = dash.Dash(__name__)
+app = dash.Dash(__name__,external_stylesheets=["https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"])
 
 nodes = [{"data": {"id": "1", "label": "Switch 1"}},
          {"data": {"id": "2", "label": "Switch 2"}},
@@ -58,8 +58,8 @@ app.layout = html.Div([
         html.Div([
             html.Div([
                 html.Button([
-                    html.Img(src="https://www.example.com/path_to_image.png",id="fullscreenIcon")
-                ], id="toggleButton", n_clicks=0),
+                    html.I(className="fa-solid fa-arrow-left", id="fullscreenIcon")
+                ], id="fullscreenButton", n_clicks=0),
                 html.H1("SDN Network Layout",id="topBarText"),
             ],id="topBarDiv"), 
             html.Div([

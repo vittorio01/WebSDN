@@ -8,6 +8,10 @@ from ryu.ofproto import ofproto_v1_3, ether
 from ryu.lib.packet import packet,ipv4,ipv6,tcp,udp,icmpv6, arp, ethernet, ether_types
 from ryu.lib import hub
 
+from flask import Flask, jsonify
+from threading import Thread
+
+app = Flask(__name__)
 
 class Controller(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -24,6 +28,10 @@ class Controller(app_manager.RyuApp):
         #initializes the network layout instance
         self.network=NetworkLayout()                
         self.switchMonitorThread = hub.spawn(self.switchStatisticsMonitor)
+        self.server_thread = hub.spawn(self.run_flask)
+
+    def run_flask(self):
+        app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
 
     def info(self, *args,type=0,verbosityLevel=0):
         if (verbosityLevel>self.verbosity): return

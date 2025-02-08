@@ -10,8 +10,9 @@ document.addEventListener("DOMContentLoaded", function() {
         let deviceDetailsDiv = document.getElementById("deviceDetailsDiv");
         let deviceListGrid = document.getElementById("deviceListGrid");
         let deviceDetailsGrid = document.getElementById("deviceDetailsGrid");
-        let toggleButton = document.getElementById("toggleButton");
-        if (hBar && vBar && detailsDiv && rightDiv && deviceListDiv && deviceDetailsDiv && topologyDiv && topBarDiv && deviceListGrid && deviceDetailsGrid && toggleButton)  {
+        let fullscreenButton = document.getElementById("fullscreenButton");
+        let fullscreenIcon= document.getElementById("fullscreenIcon");
+        if (hBar && vBar && detailsDiv && rightDiv && deviceListDiv && deviceDetailsDiv && topologyDiv && topBarDiv && deviceListGrid && deviceDetailsGrid && fullscreenButton && fullscreenIcon)  {
             hBar.addEventListener("mousedown", (e) => {
                 document.addEventListener("mousemove", resizeHorizontal);
                 document.addEventListener("mouseup", () => {
@@ -24,7 +25,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     document.removeEventListener("mousemove", resizeVertical);
                 }, { once: true });
             });
-            toggleButton.addEventListener("click", function() {
+            fullscreenButton.addEventListener("click", function() {
                 toggleDetails();
             });
             observer.disconnect();
@@ -61,15 +62,18 @@ function toggleDetails() {
     let rightDiv = document.getElementById("rightDiv");
     let originalDetailsTransition=detailsDiv.style.transition;
     let originalRightTransition=rightDiv.style.transition;
+    let fullscreenIcon= document.getElementById("fullscreenIcon");
     detailsDiv.style.transition = "width 0.5s ease-in-out";
     rightDiv.style.transition = "width 0.5s ease-in-out";
     if (detailsDiv.style.width == "0%") {
         detailsDiv.style.width = "40%";
         rightDiv.style.width="60%";
+        fullscreenIcon.className="fa-solid fa-arrow-left";
 
     } else {
         detailsDiv.style.width = "0%";
-        rightDiv.style.width="100%"
+        rightDiv.style.width="100%";
+        fullscreenIcon.className="fa-solid fa-arrow-right";
     }
     setTimeout(function() {
         rightDiv.style.transition = originalRightTransition;

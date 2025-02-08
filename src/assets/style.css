@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/icon?family=Material+Icons");
+
 #hBar {
     height: 1px;
     background-color: gray;
@@ -70,7 +72,7 @@
     display: flex;
     justify-content: space-between; 
     align-items: center;
-    padding: 0 10px;
+    padding: 0 5px;
     transition: width 0.05s ease-in-out;
 }
 
@@ -87,12 +89,16 @@
     transition: height 0.05s ease-in-out;
 }
 
-#toggleButton {
-    padding: 10px 15px;
-    color: white;
+#fullscreenButton {
+    padding-left: 10px;
     background-color: transparent;
     border: none;
     cursor: pointer;
+}
+
+#fullscreenIcon {
+    font-size: 22px;
+    color: white;
 }
 
 #deviceDetailsDiv {
