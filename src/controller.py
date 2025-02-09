@@ -1,4 +1,5 @@
 from NetworkLayout import Switch,Host,Link,SSLink,SHLink,NetworkLayout 
+from NetworkLayoutParser import *
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -8,10 +9,13 @@ from ryu.ofproto import ofproto_v1_3, ether
 from ryu.lib.packet import packet,ipv4,ipv6,tcp,udp,icmpv6, arp, ethernet, ether_types
 from ryu.lib import hub
 
-from flask import Flask, jsonify
+from flask import Flask
+import json
 from threading import Thread
 
 app = Flask(__name__)
+
+network=NetworkLayout() 
 
 class Controller(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -25,14 +29,17 @@ class Controller(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(Controller, self).__init__(*args, **kwargs)
-        #initializes the network layout instance
-        self.network=NetworkLayout()                
+        #initializes the network layout instance               
         self.switchMonitorThread = hub.spawn(self.switchStatisticsMonitor)
         self.server_thread = hub.spawn(self.run_flask)
 
     def run_flask(self):
-        app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+        app.run(host="localhost", port=5000, debug=False, use_reloader=False)
 
+    @app.route("/network_status", methods=["GET"])
+    def get_network_status():
+        return json.dumps(NetworkLayoutParser.to_dict(network),indent=4)
+    
     def info(self, *args,type=0,verbosityLevel=0):
         if (verbosityLevel>self.verbosity): return
         if type==0:
@@ -71,10 +78,10 @@ class Controller(app_manager.RyuApp):
     def switchStatisticsMonitor(self):
         hub.sleep(10)
         while True:
-            for switch in self.network.switches:
+            for switch in network.switches:
                 self.sendSwitchUpdatePortRequest(switch)
             hub.sleep(1)
-            for switch in self.network.switches:
+            for switch in network.switches:
                 self.sendSwitchPortStatusRequest(switch)
             hub.sleep(9)  # Intervallo tra le richieste (10 secondi)
 
@@ -88,7 +95,7 @@ class Controller(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_configuration_handler(self, ev):
         switch=Switch(ev.msg)
-        if self.network.addSwitch(switch)==True:
+        if network.addSwitch(switch)==True:
             self.info("Added Switch ",switch.datapathID," to network layout",type=0,verbosityLevel=0)
             self.sendSwitchUpdatePortRequest(switch)
             switch.datapath.send_msg(switch.parser.OFPSetConfig(switch.datapath, switch.protocol.OFPC_FRAG_NORMAL, switch.protocol.OFPCML_NO_BUFFER))
@@ -103,9 +110,9 @@ class Controller(app_manager.RyuApp):
     #handler for port descriptions
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
     def port_desc_stats_reply_handler(self, ev):
-        self.network.updateSwitchDescriptions(ev.msg.datapath.id,ev.msg)
+        network.updateSwitchDescriptions(ev.msg.datapath.id,ev.msg)
         self.info("Received port description for switch ",ev.msg.datapath.id,type=0,verbosityLevel=0)
-        switch=self.network.getSwitch(ev.msg.datapath.id)
+        switch=network.getSwitch(ev.msg.datapath.id)
         for port in ev.msg.body:
             if (port.state==switch.protocol.OFPPS_LINK_DOWN):
                 self.info("port:",port.port_no,", ",port.hw_addr, ", LINK DOWN, ",port.config,type=0,verbosityLevel=1)
@@ -116,7 +123,7 @@ class Controller(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def port_status_handler(self, ev):
         self.info("Received switch status message",type=0,verbosityLevel=0)
-        self.network.updateSwitchPort(ev.msg.datapath.id,ev.msg)
+        network.updateSwitchPort(ev.msg.datapath.id,ev.msg)
         port=ev.msg.desc
         
         if ev.msg.reason==ev.msg.datapath.ofproto.OFPPR_ADD:
@@ -131,7 +138,7 @@ class Controller(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_status_handler(self, ev):
-        self.network.updateSwitchStatistics(ev.msg.datapath.id,ev.msg)
+        network.updateSwitchStatistics(ev.msg.datapath.id,ev.msg)
         self.info("Received port status for switch ",ev.msg.datapath.id,type=0,verbosityLevel=2)
         for port in ev.msg.body:
             self.info("port:",port.port_no,", RX pkts: ",port.rx_packets, ", TX pkts: ",port.tx_packets,", RX bytes: ",port.rx_bytes,", TX bytes: ",port.tx_bytes,type=0,verbosityLevel=3)
@@ -142,7 +149,7 @@ class Controller(app_manager.RyuApp):
         msg=ev.msg 
 
         #gets all switch information 
-        switch=self.network.getSwitch(msg.datapath.id)
+        switch=network.getSwitch(msg.datapath.id)
         switchPortInID=msg.match['in_port']
         switchPortInMAC=switch.getPortMAC(switchPortInID)
        
@@ -152,11 +159,11 @@ class Controller(app_manager.RyuApp):
         destinationMAC=ethHeader.dst
 
         #try to find the source device from the registered network layout
-        sourceDevice=self.network.getDeviceByAddress(sourceMAC) 
+        sourceDevice=network.getDeviceByAddress(sourceMAC) 
         if isinstance(sourceDevice,Switch):
             #if the source device is a controller, then adds a new switch to switch link in the network layout
             ssLink=SSLink(switch,sourceDevice,switchPortInMAC,sourceMAC)
-            if self.network.addMACLink(ssLink)==True:
+            if network.addMACLink(ssLink)==True:
                 self.info("Added link from switch ",sourceDevice.datapathID," port ",ssLink.getSwitchUsedPortID(sourceDevice)," to switch ",switch.datapathID," port ",ssLink.getSwitchUsedPortID(switch),type=2,verbosityLevel=0)
 
 
@@ -168,14 +175,14 @@ class Controller(app_manager.RyuApp):
                 self.info("Received IPv6 (ICMPv6) packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=3)
                 return
             self.info("Received IPv6 packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
-            sourceHost=self.network.getHost(sourceIP)
+            sourceHost=network.getHost(sourceIP)
             if sourceHost == None: 
                 #if the host is not registered in the networ layout, then a new host is added to the network layout
                 sourceHost=Host(sourceMAC,sourceIP)               
-                self.network.addHost(sourceHost)
-                self.network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
+                network.addHost(sourceHost)
+                network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
                 self.info("Added device ",sourceIP," to host list (linked to switch ",switch.datapathID,": ",sourceMAC," -> port ",switchPortInID," (",switchPortInMAC,")",type=2,verbosityLevel=0)
-            destinationHost=self.network.getHost(destinationIP)
+            destinationHost=network.getHost(destinationIP)
             if (destinationHost==None):
                 #if the destination host is not in the network layout, the packet will be flooded
                 maskSwitch=False
@@ -191,12 +198,12 @@ class Controller(app_manager.RyuApp):
                             switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
                 for port in switch.portIDs:
                     if not (port==switchPortInID):
-                        self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                        network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                         self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
             else: 
                 #if the destination host is already present in the network layout, a new path will be searched.
                 self.info("Destination found in network layout: starting shortest path algorthm...",type=3,verbosityLevel=3)
-                pathList=self.network.getPath(switch,destinationHost)
+                pathList=network.getPath(switch,destinationHost)
                 if pathList==None:
                     #If the path cannot be enstablished, the packet will be flooded
                     self.info("Path not found: Flooding...",type=3,verbosityLevel=3)
@@ -212,12 +219,12 @@ class Controller(app_manager.RyuApp):
                                 switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
                     for port in switch.portIDs:
                         if not (port==switchPortInID):
-                            self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                            network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                             self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)               
                 else:
                     self.info("Path found: ",str(pathList),type=3,verbosityLevel=3)
-                    deviceOut=self.network.getDeviceByID(pathList[1])
-                    linkOut=self.network.getLinkFromDevices(switch,deviceOut)
+                    deviceOut=network.getDeviceByID(pathList[1])
+                    linkOut=network.getLinkFromDevices(switch,deviceOut)
                     switchOutPortID=linkOut.getSwitchUsedPortID(switch)
                     switchOutPortMAC=linkOut.getSwitchUsedPortMAC(switch)
                     self.info("Adding flow rule for device ",switch.datapathID,": IPv6 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
@@ -226,7 +233,7 @@ class Controller(app_manager.RyuApp):
                     switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=switchPortInID, ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=100)
 
                     #the packet is then forwarded to the output port
-                    self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                    network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                     self.info("Forwaring packet to port ",switchOutPortID,type=4,verbosityLevel=0)
 
         if ethHeader.ethertype == ether_types.ETH_TYPE_IP:
@@ -235,15 +242,15 @@ class Controller(app_manager.RyuApp):
             destinationIP=ipv4Header.dst
 
             self.info("Received IPv4 packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
-            sourceHost=self.network.getHost(sourceIP)
+            sourceHost=network.getHost(sourceIP)
             if sourceHost == None: 
                 #if the host is not registered in the network layout, then a new host is added to the network layout
                 sourceHost=Host(sourceMAC,sourceIP)               
-                self.network.addHost(sourceHost)
-                self.network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
+                network.addHost(sourceHost)
+                network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
                 self.info("Added device ",sourceIP," to host list (linked to switch ",switch.datapathID,": ",sourceMAC," -> port ",switchPortInID," (",switchPortInMAC,")",type=2,verbosityLevel=0)
             
-            destinationHost=self.network.getHost(destinationIP)
+            destinationHost=network.getHost(destinationIP)
             if destinationHost==None:
                 #if the destination host is not registered in the network layout, the packet will be flooded
                 self.info("Destination host not in network layout, flooding...",type=3,verbosityLevel=3)
@@ -259,12 +266,12 @@ class Controller(app_manager.RyuApp):
                             switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
                 for port in switch.portIDs:
                     if not (port==switchPortInID):
-                        self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                        network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                         self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
             else: 
                 #if the destination host is already present in the network layout, a new path will be searched.
                 self.info("Destination found in network layout: starting shortest path algorthm...",type=3,verbosityLevel=3)
-                pathList=self.network.getPath(switch,destinationHost)
+                pathList=network.getPath(switch,destinationHost)
                 if pathList==None:
                     #If the path cannot be enstablished, the packet will be flooded
                     self.info("Path not found: Flooding...",type=3,verbosityLevel=3)
@@ -280,12 +287,12 @@ class Controller(app_manager.RyuApp):
                                 switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
                         for port in switch.portIDs:
                             if not (port==switchPortInID):
-                                self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                                network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                                 self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
                 else:
                     self.info("Path found: ",str(pathList),type=3,verbosityLevel=3)
-                    deviceOut=self.network.getDeviceByID(pathList[1])
-                    linkOut=self.network.getLinkFromDevices(switch,deviceOut)
+                    deviceOut=network.getDeviceByID(pathList[1])
+                    linkOut=network.getLinkFromDevices(switch,deviceOut)
                     switchOutPortID=linkOut.getSwitchUsedPortID(switch)
                     switchOutPortMAC=linkOut.getSwitchUsedPortMAC(switch)
                     self.info("Adding flow rule for device ",switch.datapathID,": IPv4 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
@@ -294,7 +301,7 @@ class Controller(app_manager.RyuApp):
                     switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=switchPortInID, ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=100)
 
                     #the packet is then forwarded to the output port
-                    self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                    network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                     self.info("Forwaring packet to port ",switchOutPortID,type=4,verbosityLevel=0)
 
 
@@ -308,12 +315,12 @@ class Controller(app_manager.RyuApp):
             destinationIP=arpHeader.dst_ip
             arpOPCode=arpHeader.opcode
 
-            sourceHost=self.network.getHost(sourceIP)
+            sourceHost=network.getHost(sourceIP)
             if sourceHost == None:
                 #if the source host is not registered in the network layout, then a new host and a link from switch to host is added to the network layout
                 sourceHost=Host(sourceMAC,sourceIP)               
-                self.network.addHost(sourceHost)
-                self.network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
+                network.addHost(sourceHost)
+                network.addMACLink(SHLink(switch,sourceHost,switchPortInMAC))
                 self.info("Added device ",sourceIP," to host list (linked to switch ",switch.datapathID,": ",sourceMAC," -> port ",switchPortInID," (",switchPortInMAC,")",type=2,verbosityLevel=0)
 
 
@@ -335,7 +342,7 @@ class Controller(app_manager.RyuApp):
                 #The packet then is flooded 
                 for port in switch.portIDs:
                     if not (port==switchPortInID):
-                        self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                        network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                         self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
 
                 
@@ -343,10 +350,10 @@ class Controller(app_manager.RyuApp):
                 #ARP response 
 
                 self.info("Received ARP reply packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
-                destinationHost=self.network.getHost(destinationIP)
+                destinationHost=network.getHost(destinationIP)
 
                 self.info("Destination found in network layout: starting shortest path algorthm...",type=3,verbosityLevel=3)
-                pathList=self.network.getPath(switch,destinationHost)
+                pathList=network.getPath(switch,destinationHost)
                 if pathList==None:
                     self.info("Path not found: Flooding...",type=3,verbosityLevel=3)
                     maskSwitch=False
@@ -363,14 +370,14 @@ class Controller(app_manager.RyuApp):
                     #The packet then is flooded 
                     for port in switch.portIDs:
                         if not (port==switchPortInID):
-                            self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                            network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                             self.info("Forwaring packet to port ",port,type=4,verbosityLevel=0)
 
                 else:
 
                     self.info("Path found: ",str(pathList),type=3,verbosityLevel=3)
-                    deviceOut=self.network.getDeviceByID(pathList[1])
-                    linkOut=self.network.getLinkFromDevices(switch,deviceOut)
+                    deviceOut=network.getDeviceByID(pathList[1])
+                    linkOut=network.getLinkFromDevices(switch,deviceOut)
                     switchOutPortID=linkOut.getSwitchUsedPortID(switch)
                     switchOutPortMAC=linkOut.getSwitchUsedPortMAC(switch)
                     self.info("Adding flow rule for device ",switch.datapathID,": ARP reply from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
@@ -379,7 +386,7 @@ class Controller(app_manager.RyuApp):
                     switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=2,in_port=switchPortInID, arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=100)
 
                     #the packet is then forwarded to the output port
-                    self.network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
+                    network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
                     self.info("Forwaring packet to port ",switchOutPortID,type=4,verbosityLevel=0)
         else:
 

@@ -28,9 +28,9 @@ class AddressType(Enum):
     
 #Link represent a general link between two devices in the network
 class Link:
-    DOWN=0
-    UP=1
-    ORPHANED=-1
+    DOWN="Link Down"
+    UP="Link Up"
+    ORPHANED="Link Orphaned"
 
 #SSLink represents a link between two switches
 class SSLink(Link):
