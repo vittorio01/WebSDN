@@ -107,6 +107,10 @@
     transition: height 0.05s ease-in-out;
 }
 
+.bold-row {
+    font-weight: bold;
+}
+
 #detailsDiv {
     height: 100%; 
     width: 40%;
@@ -116,6 +120,7 @@
     flex-direction: column;
     transition: width 0.05s ease-in-out;
 }
+
 
 #topology {
     padding: 0;

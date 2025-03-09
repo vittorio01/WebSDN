@@ -61,15 +61,17 @@ app = dash.Dash(__name__,external_stylesheets=["https://cdnjs.cloudflare.com/aja
 deviceListColumnDefs = [
     {"field":"Device"},
     {"field":"Connected with"},
-    {"field":"Link status"},
+    {"field":"Link Status"},
 ]
 deviceDetailsColumnDefs= [
-    {"field":"Details"},
+    {"field":"Device Attribute"},
+    {"field":"Value","autoHeight": True,"cellRenderer": "agGroupCellRenderer",},
 ]
 
 
 app.layout = html.Div([
     dcc.Store(id="stored-elements", data=[]),
+    dcc.Store(id="deviceDetailsStore", data=[]), 
     html.Div([
         html.Div([
             html.Div([
@@ -88,7 +90,10 @@ app.layout = html.Div([
                     columnSize="sizeToFit",
                     rowData=[],
                     columnDefs=deviceDetailsColumnDefs,
-                    style={"width":"100%","height":"100%"}
+                    rowClassRules={
+                        'bold-row': 'params.data["Device Attribute"] === "Port Number"',
+                    },
+                    style={"width":"100%","height":"100%"},
                 ),
             ],id="deviceDetailsDiv"),
         ],id="detailsDiv"),
@@ -227,24 +232,24 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements):
                 linkTableElements.append({
                     "Device":"Switch "+str(link.device1)+ " port "+str(networkDescription.getSwitchPortFromMAC(link.deviceMAC1)),
                     "Connected with":"Switch "+str(link.device2)+" port "+str(networkDescription.getSwitchPortFromMAC(link.deviceMAC2)),
-                    "Link status":link.linkStatus,
+                    "Link Status":link.linkStatus,
                 })
             else:
                 linkTableElements.append({
                     "Device":"Host "+str(link.device1),
                     "Connected with":"Switch "+str(link.device2)+" port "+str(networkDescription.getSwitchPortFromMAC(link.deviceMAC2)),
-                    "Link status":link.linkStatus,
+                    "Link Status":link.linkStatus,
                 })
         topologyNodes=[]
         topologyEdges=[]
         for switch in networkDescription.switches:
             topologyNodes.append({
-                'data': {'id': str(switch.datapathID), 'label': str(switch.datapathID)},
+                'data': {'id': str(switch.datapathID), 'label': "Switch "+str(switch.datapathID)},
                 'classes': 'switch-node',
             })
         for host in networkDescription.hosts:
             topologyNodes.append({
-                'data': {'id': str(host.MAC), 'label': str(host.MAC)},
+                'data': {'id': str(host.MAC), 'label': "Host "+str(host.MAC)},
                 'classes': 'host-node',
             })
         for link in networkDescription.links:
@@ -259,6 +264,84 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements):
     except Exception as e:
         print(f"Errore nel caricamento dei dati: {str(e)}")
         return [], [], 1, {"x": 0, "y": 0}
+
+def newline_renderer(params):
+    # Sostituisce \n con <br> per i ritorni a capo
+    if params.value:
+        return params.value.replace("\n", "<br>")  # Sostituisci \n con <br>
+    return ""
+
+@app.callback(
+    Output("deviceDetailsStore", "data"), 
+    Input("topology", "selectedNodeData"), 
+)
+def on_node_selected(selected_nodes):
+    if selected_nodes:
+        node_data = selected_nodes[0]["data"]
+        node_id = node_data["id"]
+        node_label = node_data["label"]
+    
+        if "Switch" in node_label:
+            deviceType = "Switch"
+        elif "Host" in node_label:
+            deviceType = "Host"
+        else:
+            return dash.no_update
+        return updateDetails(deviceType, node_id)
+    return dash.no_update  
+
+@app.callback(
+    Output("deviceDetailsGrid", "rowData"),  # Aggiorna la griglia
+    Input("deviceDetailsStore", "data"),  # Legge i dati dallo store
+)
+def update_device_details_grid(store_data):
+    if store_data:
+        return store_data
+    return dash.no_update
+'''
+@app.callback(
+    Output("deviceDetailsGrid", "rowData"),
+    Input("deviceListGrid", "cellClicked"),
+)
+def on_device_selected(cell):
+    if cell:
+        value = cell.get("value", "N/A")
+        col_name = cell.get("colId", "Unknown Column")
+        if (col_name != "Link Status" and value != "N/A"): 
+            valueStrings=value.split()
+            deviceType= " ".join(valueStrings[:1])
+            deviceID= " ".join(valueStrings[1:2])
+            return updateDetails(deviceType,deviceID)
+            
+    return dash.no_update                                              
+'''
+def updateDetails(deviceType,deviceID):
+    if deviceType == "Switch":
+        for switch in networkDescription.switches:
+            if str(switch.datapathID)==deviceID:
+                details = [
+                    {"Device Attribute": "Datapath ID","Value": str(switch.datapathID)},
+                    {"Device Attribute": "Protocol","Value": str(switch.protocol)},
+                    {"Device Attribute": "Capabilities","Value": str(switch.switchCapabilities)},
+                ]
+                for portIndex in range(len(switch.portIDs)):
+                    details.append({"Device Attribute": "Port Number", "Value": str(switch.portIDs[portIndex])})
+                    details.append({"Device Attribute": "MAC address", "Value": switch.portMACs[portIndex]})
+                    details.append({"Device Attribute": "State", "Value": switch.portStats[portIndex]})
+                    details.append({"Device Attribute": "Speed", "Value": str(switch.portSpeeds[portIndex])+" bit/s"})
+                    details.append({"Device Attribute": "Packets sent", "Value": str(switch.portStatistics[portIndex].TXPkts)+" pkts ("+str(switch.portStatistics[portIndex].TXBytes)+" bytes)"})
+                    details.append({"Device Attribute": "Packets received", "Value": str(switch.portStatistics[portIndex].RXPkts)+" pkts ("+str(switch.portStatistics[portIndex].RXBytes)+" bytes)"})
+                return details 
+    elif deviceType == "Host":
+        for host in networkDescription.hosts:
+            if host.MAC==deviceID:
+                details = [
+                    {"Device Attribute": "MAC address", "Value": host.MAC},
+                    {"Device Attribute": "IPv4", "Value": host.IPv4},
+                    {"Device Attribute": "IPv6", "Value": host.IPv6},
+                ]
+                return details 
+    return dash.no_update
 
 if __name__ == '__main__':
     app.run_server(debug=True)
