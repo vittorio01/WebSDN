@@ -54,7 +54,13 @@ class NetworkDescriptor():
                     return switch.portIDs[portIndex]
         return None
 
-networkDescription=NetworkDescriptor()
+class selectedDetailsDevice():
+    def __init__ (self):
+        self.deviceType = None 
+        self.deviceId = None 
+
+networkDescription = NetworkDescriptor()
+selectedDevice = selectedDetailsDevice()
 
 app = dash.Dash(__name__,external_stylesheets=["https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"])
 
@@ -71,7 +77,7 @@ deviceDetailsColumnDefs= [
 
 app.layout = html.Div([
     dcc.Store(id="stored-elements", data=[]),
-    dcc.Store(id="deviceDetailsStore", data=[]), 
+    dcc.Store(id="grid-update-trigger", data=0),
     html.Div([
         html.Div([
             html.Div([
@@ -155,7 +161,7 @@ app.layout = html.Div([
                 userPanningEnabled=True,  # Disabilita pan
                 userZoomingEnabled=True,  # Disabilita zoom con la rotella del mouse
                 boxSelectionEnabled=False,  # Disabilita la selezione dei nodi tramite il box di selezione
-                autounselectify=True,  # Non permette la selezione di nodi (anche se cliccati)
+                autounselectify=False,  # Non permette la selezione di nodi (anche se cliccati)
                 ),
             ],id="topologyDiv"), 
         ],id="rightDiv"), 
@@ -169,18 +175,21 @@ app.layout = html.Div([
      Output("topology", "elements"),
      Output("topology", "zoom"),
      Output("topology", "pan"),
-     Output("stored-elements", "data")],
+     Output("stored-elements", "data"),
+     Output("grid-update-trigger", "data")],
     [Input("interval-component", "n_intervals")],
     [State("topology", "zoom"),
      State("topology", "pan"),
-     State("stored-elements", "data")]
+     State("stored-elements", "data"),
+     State("grid-update-trigger", "data")]
 )
 
-def update_device_grids(n,current_zoom, current_pan,previous_elements):
+def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
     try:
         # Richiesta API Flask per ottenere lo stato della rete
         response = requests.get("http://localhost:5000/network_status")
         data = response.json()
+
         networkDescription.switches.clear()
         networkDescription.hosts.clear()
         networkDescription.links.clear()
@@ -259,62 +268,64 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements):
 
         new_elements = topologyNodes + topologyEdges
         if json.dumps(new_elements, sort_keys=True) == json.dumps(previous_elements, sort_keys=True):
-            return dash.no_update, dash.no_update, current_zoom, current_pan, previous_elements
-        return linkTableElements, new_elements, current_zoom, current_pan, new_elements
+            return linkTableElements, dash.no_update, current_zoom, current_pan, previous_elements, trigger+1
+        return linkTableElements, new_elements, current_zoom, current_pan, new_elements, trigger + 1
     except Exception as e:
         print(f"Errore nel caricamento dei dati: {str(e)}")
-        return [], [], 1, {"x": 0, "y": 0}
+        return [], [], 1, {"x": 0, "y": 0}, [], dash.no_update
 
 def newline_renderer(params):
     # Sostituisce \n con <br> per i ritorni a capo
     if params.value:
         return params.value.replace("\n", "<br>")  # Sostituisci \n con <br>
     return ""
+ 
 
-@app.callback(
-    Output("deviceDetailsStore", "data"), 
-    Input("topology", "selectedNodeData"), 
-)
-def on_node_selected(selected_nodes):
-    if selected_nodes:
-        node_data = selected_nodes[0]["data"]
-        node_id = node_data["id"]
-        node_label = node_data["label"]
-    
-        if "Switch" in node_label:
-            deviceType = "Switch"
-        elif "Host" in node_label:
-            deviceType = "Host"
-        else:
-            return dash.no_update
-        return updateDetails(deviceType, node_id)
-    return dash.no_update  
-
-@app.callback(
-    Output("deviceDetailsGrid", "rowData"),  # Aggiorna la griglia
-    Input("deviceDetailsStore", "data"),  # Legge i dati dallo store
-)
-def update_device_details_grid(store_data):
-    if store_data:
-        return store_data
-    return dash.no_update
-'''
 @app.callback(
     Output("deviceDetailsGrid", "rowData"),
-    Input("deviceListGrid", "cellClicked"),
+    [Input("topology", "selectedNodeData"),
+     Input("deviceListGrid", "cellClicked"),
+     Input("grid-update-trigger", "data")],
 )
-def on_device_selected(cell):
-    if cell:
-        value = cell.get("value", "N/A")
-        col_name = cell.get("colId", "Unknown Column")
-        if (col_name != "Link Status" and value != "N/A"): 
-            valueStrings=value.split()
-            deviceType= " ".join(valueStrings[:1])
-            deviceID= " ".join(valueStrings[1:2])
-            return updateDetails(deviceType,deviceID)
-            
-    return dash.no_update                                              
-'''
+def update_device_details_grid(selected_nodes, cell,trigger):
+    ctx = dash.callback_context
+
+    if not ctx.triggered:
+        return dash.no_update  # Nessun trigger attivo
+
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    if trigger_id == "grid-update-trigger":
+        if (selectedDevice.deviceId!=None and selectedDevice.deviceType!=None):
+            return updateDetails(selectedDevice.deviceType,selectedDevice.deviceId)
+    elif trigger_id == "topology":
+        print(selected_nodes)
+        if selected_nodes:
+            node_data = selected_nodes[0]
+            node_id = node_data["id"]
+            node_label = node_data["label"]
+            if "Switch" in node_label:
+                deviceType = "Switch"
+            elif "Host" in node_label:
+                deviceType = "Host"
+            else:
+                return dash.no_update
+            return updateDetails(deviceType, node_id)
+        return dash.no_update 
+
+    elif trigger_id == "deviceListGrid":
+        if cell:
+            value = cell.get("value", "N/A")
+            col_name = cell.get("colId", "Unknown Column")
+
+            if col_name != "Link Status" and value != "N/A": 
+                valueStrings = value.split()
+                deviceType = " ".join(valueStrings[:1])
+                deviceID = " ".join(valueStrings[1:2])
+                return updateDetails(deviceType, deviceID)
+
+    return dash.no_update
+                                         
+
 def updateDetails(deviceType,deviceID):
     if deviceType == "Switch":
         for switch in networkDescription.switches:
@@ -331,6 +342,8 @@ def updateDetails(deviceType,deviceID):
                     details.append({"Device Attribute": "Speed", "Value": str(switch.portSpeeds[portIndex])+" bit/s"})
                     details.append({"Device Attribute": "Packets sent", "Value": str(switch.portStatistics[portIndex].TXPkts)+" pkts ("+str(switch.portStatistics[portIndex].TXBytes)+" bytes)"})
                     details.append({"Device Attribute": "Packets received", "Value": str(switch.portStatistics[portIndex].RXPkts)+" pkts ("+str(switch.portStatistics[portIndex].RXBytes)+" bytes)"})
+                selectedDevice.deviceId=deviceID 
+                selectedDevice.deviceType=deviceType
                 return details 
     elif deviceType == "Host":
         for host in networkDescription.hosts:
@@ -340,6 +353,8 @@ def updateDetails(deviceType,deviceID):
                     {"Device Attribute": "IPv4", "Value": host.IPv4},
                     {"Device Attribute": "IPv6", "Value": host.IPv6},
                 ]
+                selectedDevice.deviceId=deviceID 
+                selectedDevice.deviceType=deviceType
                 return details 
     return dash.no_update
 
