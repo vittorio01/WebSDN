@@ -365,6 +365,7 @@ class Switch():
     #returns -> False or True
     def isSwitchPort(self,macAddress):
         if macAddress in self.portMACs:
+            
             return True 
         return False
     
@@ -415,15 +416,13 @@ class Host():
             if host.MAC != self.MAC:
                 return False 
             if self.hasIPv4Address() and host.hasIPv4Address():
-                if self.IPv4!=self.IPv4:
-                    return False 
-            elif host.hasIPv4Address():
-                return False 
+                if self.IPv4!=host.IPv4:
+                    self.IPv4=host.IPv4
+                    return True
             if self.hasIPv6Address() and host.hasIPv6Address():
-                if self.IPv6!=self.IPv6:
-                    return False 
-            elif host.hasIPv6Address():
-                return False 
+                if self.IPv6!=host.IPv6:
+                    self.IPv6=host.IPv6
+                    return True
             return True 
         return False 
 
@@ -443,7 +442,7 @@ class NetworkLayout:
             return True 
         return False
     
-    #addHost(self,switch) adds a switch to the list
+    #addHost(self,switch) adds a host to the list
     #host-> host instance to add
     #returns -> True if the host instance was not added before, False otherwise
     def addHost(self,host):
@@ -496,9 +495,14 @@ class NetworkLayout:
         if AddressType.verify(address)!=AddressType.MAC: return False
         host=self.getHost(address)
         if host==None:
+            print("---")
             for switch in self.switches:
-                if address in switch.portMACs:
+                print(switch.portMACs)
+                if switch.isSwitchPort(address):
+                    
+                    print("---")
                     return switch 
+            print("---")
             return None
         return host
     

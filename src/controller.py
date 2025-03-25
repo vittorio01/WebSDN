@@ -175,7 +175,7 @@ class Controller(app_manager.RyuApp):
                 self.info("Received IPv6 (ICMPv6) packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=3)
                 return
             self.info("Received IPv6 packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
-            sourceHost=network.getHost(sourceIP)
+            sourceHost=network.getDeviceByAddress(sourceMAC)
             if sourceHost == None: 
                 #if the host is not registered in the networ layout, then a new host is added to the network layout
                 sourceHost=Host(sourceMAC,sourceIP)               
@@ -242,7 +242,7 @@ class Controller(app_manager.RyuApp):
             destinationIP=ipv4Header.dst
 
             self.info("Received IPv4 packet in switch ",switch.datapathID," from ",sourceIP, " (",sourceMAC,") to ",destinationIP," (",destinationMAC,")",type=1,verbosityLevel=0)
-            sourceHost=network.getHost(sourceIP)
+            sourceHost=network.getDeviceByAddress(sourceIP)
             if sourceHost == None: 
                 #if the host is not registered in the network layout, then a new host is added to the network layout
                 sourceHost=Host(sourceMAC,sourceIP)               
@@ -315,7 +315,7 @@ class Controller(app_manager.RyuApp):
             destinationIP=arpHeader.dst_ip
             arpOPCode=arpHeader.opcode
 
-            sourceHost=network.getHost(sourceIP)
+            sourceHost=network.getDeviceByAddress(sourceMAC)
             if sourceHost == None:
                 #if the source host is not registered in the network layout, then a new host and a link from switch to host is added to the network layout
                 sourceHost=Host(sourceMAC,sourceIP)               

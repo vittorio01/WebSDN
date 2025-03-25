@@ -71,7 +71,7 @@ deviceListColumnDefs = [
 ]
 deviceDetailsColumnDefs= [
     {"field":"Device Attribute"},
-    {"field":"Value","autoHeight": True,"cellRenderer": "agGroupCellRenderer",},
+    {"field":"Value"},
 ]
 
 
@@ -86,7 +86,7 @@ app.layout = html.Div([
                     columnSize="sizeToFit",
                     rowData=[],
                     columnDefs=deviceListColumnDefs,
-                    style={"width":"100%","height":"100%"}
+                    style={"width":"100%","height":"100%"},
                 ),
             ],id="deviceListDiv"),
             html.Div([],id="hBar"),
@@ -101,6 +101,7 @@ app.layout = html.Div([
                     },
                     style={"width":"100%","height":"100%"},
                 ),
+                dcc.Store(id="grid-scroll-position", data=0),
             ],id="deviceDetailsDiv"),
         ],id="detailsDiv"),
         html.Div([],id="vBar"),
@@ -166,7 +167,7 @@ app.layout = html.Div([
             ],id="topologyDiv"), 
         ],id="rightDiv"), 
     ],id="contentsDiv"),
-    dcc.Interval(id="interval-component", interval=2000, n_intervals=0),
+    dcc.Interval(id="interval-component", interval=5000, n_intervals=0),
 ],id="pageDiv")
 
 
@@ -268,7 +269,7 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
 
         new_elements = topologyNodes + topologyEdges
         if json.dumps(new_elements, sort_keys=True) == json.dumps(previous_elements, sort_keys=True):
-            return linkTableElements, dash.no_update, current_zoom, current_pan, previous_elements, trigger+1
+            return linkTableElements, dash.no_update, current_zoom, current_pan, previous_elements, trigger + 1
         return linkTableElements, new_elements, current_zoom, current_pan, new_elements, trigger + 1
     except Exception as e:
         print(f"Errore nel caricamento dei dati: {str(e)}")
@@ -282,23 +283,30 @@ def newline_renderer(params):
  
 
 @app.callback(
-    Output("deviceDetailsGrid", "rowData"),
+    [Output("deviceDetailsGrid", "rowData"),
+     Output("grid-scroll-position", "data")],
     [Input("topology", "selectedNodeData"),
      Input("deviceListGrid", "cellClicked"),
-     Input("grid-update-trigger", "data")],
+     Input("grid-update-trigger", "data"),
+     Input("deviceDetailsGrid", "rowData")],
+    [State("grid-scroll-position", "data")]
 )
-def update_device_details_grid(selected_nodes, cell,trigger):
+def update_device_details_grid(selected_nodes, cell, trigger, current_details,scroll_position):
     ctx = dash.callback_context
 
     if not ctx.triggered:
-        return dash.no_update  # Nessun trigger attivo
+        return dash.no_update, scroll_position 
 
     trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
     if trigger_id == "grid-update-trigger":
-        if (selectedDevice.deviceId!=None and selectedDevice.deviceType!=None):
-            return updateDetails(selectedDevice.deviceType,selectedDevice.deviceId)
+        if selectedDevice.deviceId and selectedDevice.deviceType:
+            new_details = updateDetails(selectedDevice.deviceType, selectedDevice.deviceId)
+            if new_details == current_details:
+                return dash.no_update, scroll_position
+            return new_details, scroll_position
+
     elif trigger_id == "topology":
-        print(selected_nodes)
         if selected_nodes:
             node_data = selected_nodes[0]
             node_id = node_data["id"]
@@ -308,23 +316,26 @@ def update_device_details_grid(selected_nodes, cell,trigger):
             elif "Host" in node_label:
                 deviceType = "Host"
             else:
-                return dash.no_update
-            return updateDetails(deviceType, node_id)
-        return dash.no_update 
+                return dash.no_update, scroll_position
+            new_details = updateDetails(deviceType, node_id)
+            if new_details == current_details:
+                return dash.no_update,scroll_position
+            return new_details, scroll_position
 
     elif trigger_id == "deviceListGrid":
         if cell:
             value = cell.get("value", "N/A")
             col_name = cell.get("colId", "Unknown Column")
-
-            if col_name != "Link Status" and value != "N/A": 
+            if col_name != "Link Status" and value != "N/A":
                 valueStrings = value.split()
                 deviceType = " ".join(valueStrings[:1])
                 deviceID = " ".join(valueStrings[1:2])
-                return updateDetails(deviceType, deviceID)
+                new_details = updateDetails(deviceType, deviceID)
+                if new_details == current_details:
+                    return dash.no_update, scroll_position
+                return new_details, scroll_position
 
-    return dash.no_update
-                                         
+    return dash.no_update, scroll_position 
 
 def updateDetails(deviceType,deviceID):
     if deviceType == "Switch":
