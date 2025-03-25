@@ -492,17 +492,13 @@ class NetworkLayout:
     #address -> MAC address or IPv4 address of the device
     #returns -> Host instance (matching MAC or IP) or Switch (matching MAC address with one port) instance, None for a non correspondence 
     def getDeviceByAddress(self,address):
-        if AddressType.verify(address)!=AddressType.MAC: return False
         host=self.getHost(address)
         if host==None:
-            print("---")
+            if AddressType.verify(address)!=AddressType.MAC: return None
             for switch in self.switches:
                 print(switch.portMACs)
                 if switch.isSwitchPort(address):
-                    
-                    print("---")
                     return switch 
-            print("---")
             return None
         return host
     
