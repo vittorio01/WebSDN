@@ -73,6 +73,12 @@ deviceDetailsColumnDefs= [
     {"field":"Device Attribute"},
     {"field":"Value"},
 ]
+switchFlowTableColumnDefs= [
+    {"field":"Source"},
+    {"field":"Destination"},
+    {"field":"Protocol"},
+    {"field":"Operation"},
+]
 
 
 app.layout = html.Div([
@@ -89,7 +95,7 @@ app.layout = html.Div([
                     style={"width":"100%","height":"100%"},
                 ),
             ],id="deviceListDiv"),
-            html.Div([],id="hBar"),
+            html.Div([],className="hBar",id="hBar1"),
             html.Div([
                 dag.AgGrid(
                     id="deviceDetailsGrid",
@@ -101,15 +107,17 @@ app.layout = html.Div([
                     },
                     style={"width":"100%","height":"100%"},
                 ),
-                dcc.Store(id="grid-scroll-position", data=0),
             ],id="deviceDetailsDiv"),
         ],id="detailsDiv"),
         html.Div([],id="vBar"),
         html.Div([
             html.Div([
                 html.Button([
-                    html.I(className="fa-solid fa-arrow-left", id="fullscreenIcon")
-                ], id="fullscreenButton", n_clicks=0),
+                    html.I(className="fa-solid fa-circle-info", id="detailsIcon")
+                ], id="detailsButton",className="topBarButton", n_clicks=0),
+                html.Button([
+                    html.I(className="fa-solid fa-table", id="flowTableIcon")
+                ], id="flowTableButton",className="topBarButton", n_clicks=0),
                 html.H1("SDN Network Layout",id="topBarText"),
             ],id="topBarDiv"), 
             html.Div([
@@ -164,7 +172,20 @@ app.layout = html.Div([
                 boxSelectionEnabled=False,  # Disabilita la selezione dei nodi tramite il box di selezione
                 autounselectify=False,  # Non permette la selezione di nodi (anche se cliccati)
                 ),
-            ],id="topologyDiv"), 
+            ],id="topologyDiv"),
+            html.Div([],className="hBar",id="hBar2"), 
+            html.Div([
+                dag.AgGrid(
+                    id="switchFlowTableGrid",
+                    columnSize="sizeToFit",
+                    rowData=[],
+                    columnDefs=switchFlowTableColumnDefs,
+                    style={"width":"100%","height":"100%"},
+                ),
+                dcc.Store(id="grid-scroll-position", data=0),
+            ],id="switchFlowTableDiv"),
+            
+
         ],id="rightDiv"), 
     ],id="contentsDiv"),
     dcc.Interval(id="interval-component", interval=5000, n_intervals=0),
@@ -263,9 +284,16 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
                 'classes': 'host-node',
             })
         for link in networkDescription.links:
+            link_status = "solid" if link.linkStatus == "Link Up" else "dashed"
             topologyEdges.append({
-                'data': {'source': str(link.device1), 'target': str(link.device2)}
+                'data': {'source': str(link.device1), 'target': str(link.device2)},
+                'style': {
+                    'line-color': '#gray',
+                    'width': '1.5px',
+                    'line-style': link_status 
+                }
             })
+
 
         new_elements = topologyNodes + topologyEdges
         if json.dumps(new_elements, sort_keys=True) == json.dumps(previous_elements, sort_keys=True):

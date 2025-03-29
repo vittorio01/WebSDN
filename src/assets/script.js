@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", function() {
     const observer = new MutationObserver(function(mutations) {
-        let hBar = document.getElementById("hBar");
+        let hBar = document.getElementById("hBar1");
+        let hBar2 = document.getElementById("hBar2");
         let vBar = document.getElementById("vBar");
         let detailsDiv = document.getElementById("detailsDiv");
         let rightDiv = document.getElementById("rightDiv");
@@ -8,15 +9,23 @@ document.addEventListener("DOMContentLoaded", function() {
         let topBarDiv=document.getElementById("topBarDiv");
         let deviceListDiv = document.getElementById("deviceListDiv");
         let deviceDetailsDiv = document.getElementById("deviceDetailsDiv");
+        let switchFlowTableDiv = document.getElementById("switchFlowTableDiv");
         let deviceListGrid = document.getElementById("deviceListGrid");
         let deviceDetailsGrid = document.getElementById("deviceDetailsGrid");
-        let fullscreenButton = document.getElementById("fullscreenButton");
-        let fullscreenIcon= document.getElementById("fullscreenIcon");
-        if (hBar && vBar && detailsDiv && rightDiv && deviceListDiv && deviceDetailsDiv && topologyDiv && topBarDiv && deviceListGrid && deviceDetailsGrid && fullscreenButton && fullscreenIcon)  {
+        let detailsButton = document.getElementById("detailsButton");
+        let flowTableButton = document.getElementById("flowTableButton");
+        
+        if (hBar && vBar && hBar2 && flowTableButton && switchFlowTableDiv && hBar2  && deviceListGrid && deviceDetailsGrid  && detailsDiv  && rightDiv  && topologyDiv  && topBarDiv  && deviceListDiv  && deviceDetailsDiv  && switchFlowTableDiv) {
             hBar.addEventListener("mousedown", (e) => {
                 document.addEventListener("mousemove", resizeHorizontal);
                 document.addEventListener("mouseup", () => {
                     document.removeEventListener("mousemove", resizeHorizontal);
+                }, { once: true });
+            });
+            hBar2.addEventListener("mousedown", (e) => {
+                document.addEventListener("mousemove", resizeHorizontal2);
+                document.addEventListener("mouseup", () => {
+                    document.removeEventListener("mousemove", resizeHorizontal2);
                 }, { once: true });
             });
             vBar.addEventListener("mousedown", (e) => {
@@ -25,8 +34,11 @@ document.addEventListener("DOMContentLoaded", function() {
                     document.removeEventListener("mousemove", resizeVertical);
                 }, { once: true });
             });
-            fullscreenButton.addEventListener("click", function() {
+            detailsButton.addEventListener("click", function() {
                 toggleDetails();
+            });
+            flowTableButton.addEventListener("click", function() {
+                toggleFlowTable();
             });
             observer.disconnect();
         }
@@ -46,6 +58,17 @@ function resizeVertical(e) {
     }
 }
 
+function resizeHorizontal2(e) {
+    let switchFlowTableDiv = document.getElementById("switchFlowTableDiv");
+    let topologyDiv = document.getElementById("topologyDiv");
+    let newValueTop=(e.clientY - topologyDiv.getBoundingClientRect().top);
+    let newValueBottom=(switchFlowTableDiv.parentElement.getBoundingClientRect().height + topologyDiv.getBoundingClientRect().top - e.clientY );
+    if (newValueTop > 60 && newValueBottom > 60) {
+        topologyDiv.style.height = newValueTop + "px";
+        switchFlowTableDiv.style.height = newValueBottom + "px";
+    }
+
+}
 function resizeHorizontal(e) {
     let deviceListDiv = document.getElementById("deviceListDiv");
     let deviceDetailsDiv = document.getElementById("deviceDetailsDiv");
@@ -57,26 +80,38 @@ function resizeHorizontal(e) {
     }
 }
 
+
 function toggleDetails() {
     let detailsDiv = document.getElementById("detailsDiv");
     let rightDiv = document.getElementById("rightDiv");
     let originalDetailsTransition=detailsDiv.style.transition;
     let originalRightTransition=rightDiv.style.transition;
-    let fullscreenIcon= document.getElementById("fullscreenIcon");
     detailsDiv.style.transition = "width 0.5s ease-in-out";
     rightDiv.style.transition = "width 0.5s ease-in-out";
     if (detailsDiv.style.width == "0%") {
         detailsDiv.style.width = "40%";
         rightDiv.style.width="60%";
-        fullscreenIcon.className="fa-solid fa-arrow-left";
 
     } else {
         detailsDiv.style.width = "0%";
         rightDiv.style.width="100%";
-        fullscreenIcon.className="fa-solid fa-arrow-right";
     }
     setTimeout(function() {
         rightDiv.style.transition = originalRightTransition;
         detailsDiv.style.transition = originalDetailsTransition; 
     }, 500); 
+}
+
+function toggleFlowTable() {
+    let switchFlowTableDiv = document.getElementById("switchFlowTableDiv");
+    let topologyDiv = document.getElementById("topologyDiv");
+    switchFlowTableDiv.style.transition = "height 0.05s ease-in-out";
+    topologyDiv.style.transition = "height 0.05s ease-in-out";
+    if (switchFlowTableDiv.style.height == "0%") {
+        switchFlowTableDiv.style.height = "40%";
+        topologyDiv.style.height = "60%";
+    } else {
+        switchFlowTableDiv.style.height = "0%";
+        topologyDiv.style.height = "100%";
+    }
 }
