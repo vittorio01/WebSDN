@@ -191,11 +191,11 @@ class Controller(app_manager.RyuApp):
                 for port in switch.portIDs:
                     if maskSwitch==True:
                         #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
-                        switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                        switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IPV6)
                     else:
                         #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
                         if not (port==switchPortInID):
-                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                            switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IPV6)
                 for port in switch.portIDs:
                     if not (port==switchPortInID):
                         network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -212,11 +212,11 @@ class Controller(app_manager.RyuApp):
                     for port in switch.portIDs:
                         if maskSwitch==True:
                             #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
-                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                            switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IPV6)
                         else:
                             #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
                             if not (port==switchPortInID):
-                                switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=port,ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=1)
+                                switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IPV6)
                     for port in switch.portIDs:
                         if not (port==switchPortInID):
                             network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -230,7 +230,7 @@ class Controller(app_manager.RyuApp):
                     self.info("Adding flow rule for device ",switch.datapathID,": IPv6 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
                     
                     #registering a flow rule for the current switch to avoid to launch again the algoithm
-                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IPV6,in_port=switchPortInID, ipv6_src=sourceIP,ipv6_dst=destinationIP),hardTimeout=100)
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=100,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IPV6)
 
                     #the packet is then forwarded to the output port
                     network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -259,11 +259,11 @@ class Controller(app_manager.RyuApp):
                 for port in switch.portIDs:
                     if maskSwitch==True:
                         #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
-                        switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                        switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IP)
                     else:
                         #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
                         if not (port==switchPortInID):
-                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                            switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IP)
                 for port in switch.portIDs:
                     if not (port==switchPortInID):
                         network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -280,11 +280,11 @@ class Controller(app_manager.RyuApp):
                     for port in switch.portIDs:
                         if maskSwitch==True:
                             #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
-                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                            switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IP)
                         else:
                             #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
                             if not (port==switchPortInID):
-                                switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=port,ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=1)
+                                switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IP)
                         for port in switch.portIDs:
                             if not (port==switchPortInID):
                                 network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=port,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -298,7 +298,7 @@ class Controller(app_manager.RyuApp):
                     self.info("Adding flow rule for device ",switch.datapathID,": IPv4 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
                     
                     #registering a flow rule for the current switch to avoid to launch again the algoithm
-                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,in_port=switchPortInID, ipv4_src=sourceIP,ipv4_dst=destinationIP),hardTimeout=100)
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=100,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IP)
 
                     #the packet is then forwarded to the output port
                     network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -333,11 +333,11 @@ class Controller(app_manager.RyuApp):
                 for port in switch.portIDs:
                     if maskSwitch==True:
                         #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
-                        switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=1,in_port=port,arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=1)
+                        switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_ARP,flowArpOp=1)
                     else:
                         #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
                         if not (port==switchPortInID):
-                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=1,in_port=port,arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=1)
+                            switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_ARP,flowArpOp=1)
                         
                 #The packet then is flooded 
                 for port in switch.portIDs:
@@ -361,11 +361,11 @@ class Controller(app_manager.RyuApp):
                     for port in switch.portIDs:
                         if maskSwitch==True:
                             #if the source device is a registered switch, flow rules to mask all same ARP requests are added to all ports to avoid loops in the network
-                            switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=1,in_port=port,arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=1)
+                            switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_ARP,flowArpOp=2)
                         else:
                             #if the source device is a host, flow rules to mask all ports but the source port are added to all ports to avoid loops
                             if not (port==switchPortInID):
-                                switch.addFlowDirective(priority=100,actions=None,match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=1,in_port=port,arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=1)
+                                switch.addFlowDirective(priority=100,actions=None,hardTimeout=1,flowPortIn=port,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_ARP,flowArpOp=2)
                             
                     #The packet then is flooded 
                     for port in switch.portIDs:
@@ -383,7 +383,7 @@ class Controller(app_manager.RyuApp):
                     self.info("Adding flow rule for device ",switch.datapathID,": ARP reply from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
                     
                     #registering a flow rule for the current switch to avoid to launch again the algoithm
-                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],match=switch.parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,arp_op=2,in_port=switchPortInID, arp_spa=sourceIP,arp_tpa=destinationIP),hardTimeout=100)
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=100,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_ARP,flowArpOp=2)
 
                     #the packet is then forwarded to the output port
                     network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)

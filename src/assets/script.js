@@ -91,10 +91,12 @@ function toggleDetails() {
     if (detailsDiv.style.width == "0%") {
         detailsDiv.style.width = "40%";
         rightDiv.style.width="60%";
+        detailsButton.className = 'topBarButton-active';
 
     } else {
         detailsDiv.style.width = "0%";
         rightDiv.style.width="100%";
+        detailsButton.className = 'topBarButton';
     }
     setTimeout(function() {
         rightDiv.style.transition = originalRightTransition;
@@ -105,13 +107,22 @@ function toggleDetails() {
 function toggleFlowTable() {
     let switchFlowTableDiv = document.getElementById("switchFlowTableDiv");
     let topologyDiv = document.getElementById("topologyDiv");
-    switchFlowTableDiv.style.transition = "height 0.05s ease-in-out";
-    topologyDiv.style.transition = "height 0.05s ease-in-out";
+    let originalFlowTableTransition=detailsDiv.style.transition;
+    let originalTopologyDivTransition=topologyDiv.style.transition;
+    let flowTableButton=document.getElementById("flowTableButton");
+    switchFlowTableDiv.style.transition = "height 0.5s ease-in-out";
+    topologyDiv.style.transition = "height 0.5s ease-in-out";
     if (switchFlowTableDiv.style.height == "0%") {
         switchFlowTableDiv.style.height = "40%";
         topologyDiv.style.height = "60%";
+        flowTableButton.className = 'topBarButton-active';
     } else {
         switchFlowTableDiv.style.height = "0%";
         topologyDiv.style.height = "100%";
+        flowTableButton.className = 'topBarButton';
     }
+    setTimeout(function() {
+        switchFlowTableDiv.style.transition = originalFlowTableTransition;
+        topologyDiv.style.transition = originalTopologyDivTransition; 
+    }, 500); 
 }

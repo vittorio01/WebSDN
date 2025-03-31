@@ -229,6 +229,25 @@ class PortStatistics():
         self.RXBytes=RXBytes 
         self.TXBytes=TXBytes
 
+class FlowTable():
+    def __init__(self):
+        self.flows=[]
+
+    def addFlow(self,match,description=None):
+        newFlow={"match":match,"description":description}
+        self.flows.append(newFlow)
+    
+    def getFlowDescriptions(self):
+        descriptions=[]
+        for flow in self.flows:
+            descriptions.append(flow['description'])
+        return descriptions
+    
+    def removeFlow(self,match):
+        for flow in self.flows:
+            if flow['match']==match:
+                self.flows.remove(flow)
+
 #Switch represents a switch in the network
 class Switch():
     openflow_port=4294967294        #default port used by openflow 
@@ -240,12 +259,14 @@ class Switch():
         self.portConfigs=[]                                 #list of port configurations (OFPPort config value)
         self.portStatistics=[]                              #list of statistics per port 
         self.portSpeeds=[]                                  #list of port speeds
-
+        
         self.datapath=switchMessage.datapath                #switch's datapath instance 
         self.protocol=self.datapath.ofproto                 #switch's openflow protocol 
         self.parser=self.datapath.ofproto_parser            #switch's parser class 
         self.datapathID=switchMessage.datapath_id           #switch's datapath ID (string)
         self.switchCapabilities=switchMessage.capabilities  #switch's capabilities class (OFPSwitchFeatures)
+
+        self.flows=FlowTable()
 
     #updatePorts(self,portDescriptions) update port information and status
     #portDescription -> istance of the message from the ofp_event.EventOFPPortDescStatsReply handler (msg.body)
@@ -307,20 +328,90 @@ class Switch():
     #match -> istance of OFPMatch 
     #buffer_id -> buffer position (if specified)
     #idleTimeout, hardTimeout -> integer values if specified
-    def addFlowDirective(self,actions=None,match=None,priority=0,buffer_id=None,idleTimeout=0,hardTimeout=0):
-        if match==None:
-            msgMatch=self.parser.OFPMatch()
+    def addFlowDirective(self,actions=None,priority=0,buffer_id=None,idleTimeout=0,hardTimeout=0, flowPortIn=None,flowSourceMAC=None,flowSourceIP=None,flowDestinationMAC=None,flowDestinationIP=None,flowEthType=None,flowArpOp=None):
+        matchFields={}
+        matchDescription={
+            'portIn':"*",
+            'sourceMAC':"*",
+            'destinationMAC':"*",
+            'protocol':"*",
+            'operation':"Drop",
+            'sourceIP':"*",
+            'destinationIP':"*"
+        }
+        if flowEthType is not None:
+            matchFields['eth_type'] = flowEthType
+        if flowPortIn is not None:
+            matchFields['in_port'] = flowPortIn
+            matchDescription['portIn'] = flowPortIn
+        if flowSourceMAC is not None:
+            matchFields['eth_src'] = flowSourceMAC
+            matchDescription['sourceMAC'] = flowSourceMAC
+        if flowDestinationMAC is not None:
+            matchFields['eth_dst'] = flowDestinationMAC
+            matchDescription['destinationMAC'] = flowDestinationMAC
+        
+        if flowEthType==ether_types.ETH_TYPE_IP:
+            matchDescription['protocol']="IPv4"
+            if flowSourceIP is not None:
+                matchFields['ipv4_src'] = flowSourceIP
+                matchDescription['sourceIP']=flowSourceIP
+            if flowDestinationIP is not None:
+                matchFields['ipv4_dst'] = flowDestinationIP
+                matchDescription['destinationIP']=flowDestinationIP
+            match=self.parser.OFPMatch(**matchFields)
+        elif flowEthType==ether_types.ETH_TYPE_IPV6:
+            matchDescription['protocol']="IPv6"
+            if flowSourceIP is not None:
+                matchFields['ipv6_src'] = flowSourceIP
+                matchDescription['sourceIP']=flowSourceIP
+            if flowDestinationIP is not None:
+                matchFields['ipv6_dst'] = flowDestinationIP
+                matchDescription['destinationIP']=flowDestinationIP
+            match=self.parser.OFPMatch(**matchFields)
+        elif flowEthType==ether_types.ETH_TYPE_ARP:
+            if flowSourceIP is not None:
+                matchFields['arp_spa'] = flowSourceIP
+                matchDescription['sourceIP']=flowSourceIP
+            if flowDestinationIP is not None:
+                matchFields['arp_tpa'] = flowDestinationIP
+                matchDescription['destinationIP']=flowDestinationIP
+            if (flowArpOp==1):
+                matchDescription['protocol']="ARP Request"
+                matchFields["arp_op"]=flowArpOp
+                match=self.parser.OFPMatch(**matchFields)
+            elif (flowArpOp==2):
+                matchDescription['protocol']="ARP Reply"
+                matchFields["arp_op"]=flowArpOp
+                match=self.parser.OFPMatch(**matchFields)
+            else:
+                matchDescription['protocol']="ARP"
+                match=self.parser.OFPMatch(**matchFields)
         else:
-            msgMatch=match
+            match=self.parser.OFPMatch()
+
         if actions==None:
-             instructions = []
+            instructions = []
         else:
             instructions = [self.parser.OFPInstructionActions(self.protocol.OFPIT_APPLY_ACTIONS, actions)]
+
         if buffer_id==None:
-            switchMessage=self.parser.OFPFlowMod(datapath=self.datapath,priority=priority,match=msgMatch,instructions=instructions,idle_timeout=idleTimeout,hard_timeout=hardTimeout)
+            switchMessage=self.parser.OFPFlowMod(datapath=self.datapath,priority=priority,match=match,instructions=instructions,idle_timeout=idleTimeout,hard_timeout=hardTimeout)
         else:
             switchMessage=self.parser.OFPFLowMod(datapath=self.datapath,buffer_id=buffer_id,priority=priority,match=match,instructions=instructions,idle_timeout=idleTimeout,hard_timeout=hardTimeout)
         self.datapath.send_msg(switchMessage)
+
+        flowOperation=""
+        if actions is not None:
+            for action in actions:
+                if isinstance(action,self.parser.OFPActionOutput):
+                    flowOperation=flowOperation+"forward to "+str(action.port)+" ,"
+            matchDescription["Operation"]=flowOperation
+            
+        self.flows.addFlow(match,matchDescription)
+    
+    def removeFlowDirective(self,match):
+        self.flows.removeFlow(match)
     
     #sendPacket(self,data,inputPort,buffer_id=None,outputPort=None) sends a packet to the corresponding switch that tells to forward a packet to a specific port 
     #data -> packet data 

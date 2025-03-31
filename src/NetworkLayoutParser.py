@@ -48,6 +48,7 @@ class NetworkLayoutParser():
                         for statistics in sw.portStatistics
                     ],
                     "portSpeeds": sw.portSpeeds,
+                    "flows": sw.flows.getFlowDescriptions(),
                 }
                 for sw in NLClass.switches
             ],

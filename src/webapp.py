@@ -26,6 +26,7 @@ class SwitchDescriptor():
         self.protocol=""                   
         self.datapathID=""      
         self.switchCapabilities=""
+        self.flows=[]
 
 class HostDescriptor():
     def __init__(self):
@@ -74,6 +75,7 @@ deviceDetailsColumnDefs= [
     {"field":"Value"},
 ]
 switchFlowTableColumnDefs= [
+    {"field":"Port In"},
     {"field":"Source"},
     {"field":"Destination"},
     {"field":"Protocol"},
@@ -113,11 +115,11 @@ app.layout = html.Div([
         html.Div([
             html.Div([
                 html.Button([
-                    html.I(className="fa-solid fa-circle-info", id="detailsIcon")
-                ], id="detailsButton",className="topBarButton", n_clicks=0),
+                    html.I(className="fa-solid fa-table-list", id="detailsIcon")
+                ], id="detailsButton",className="topBarButton-active", n_clicks=0),
                 html.Button([
                     html.I(className="fa-solid fa-table", id="flowTableIcon")
-                ], id="flowTableButton",className="topBarButton", n_clicks=0),
+                ], id="flowTableButton",className="topBarButton-active", n_clicks=0),
                 html.H1("SDN Network Layout",id="topBarText"),
             ],id="topBarDiv"), 
             html.Div([
@@ -225,6 +227,7 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
             newSwitch.portStats=switch["portStats"]
             newSwitch.portSpeeds=switch["portSpeeds"]
             newSwitch.portStatistics=[]
+            newSwitch.flows=switch['flows']
             for port in switch["portStatistics"]:
                 newPortStatistics=PortStatisticsDescriptor()
                 newPortStatistics.RXBytes=port["RXBytes"]
@@ -312,6 +315,7 @@ def newline_renderer(params):
 
 @app.callback(
     [Output("deviceDetailsGrid", "rowData"),
+     Output("switchFlowTableGrid", "rowData"),
      Output("grid-scroll-position", "data")],
     [Input("topology", "selectedNodeData"),
      Input("deviceListGrid", "cellClicked"),
@@ -323,7 +327,7 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
     ctx = dash.callback_context
 
     if not ctx.triggered:
-        return dash.no_update, scroll_position 
+        return dash.no_update, dash.no_update, scroll_position 
 
     trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
@@ -331,7 +335,7 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
         if selectedDevice.deviceId and selectedDevice.deviceType:
             new_details = updateDetails(selectedDevice.deviceType, selectedDevice.deviceId)
             if new_details == current_details:
-                return dash.no_update, scroll_position
+                return dash.no_update,dash.no_update, scroll_position
             return new_details, scroll_position
 
     elif trigger_id == "topology":
@@ -344,10 +348,10 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
             elif "Host" in node_label:
                 deviceType = "Host"
             else:
-                return dash.no_update, scroll_position
+                return dash.no_update, dash.no_update, scroll_position
             new_details = updateDetails(deviceType, node_id)
             if new_details == current_details:
-                return dash.no_update,scroll_position
+                return dash.no_update,dash.no_update, scroll_position
             return new_details, scroll_position
 
     elif trigger_id == "deviceListGrid":
@@ -360,10 +364,10 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
                 deviceID = " ".join(valueStrings[1:2])
                 new_details = updateDetails(deviceType, deviceID)
                 if new_details == current_details:
-                    return dash.no_update, scroll_position
+                    return dash.no_update,dash.no_update,  scroll_position
                 return new_details, scroll_position
 
-    return dash.no_update, scroll_position 
+    return dash.no_update, dash.no_update, scroll_position 
 
 def updateDetails(deviceType,deviceID):
     if deviceType == "Switch":
@@ -374,6 +378,15 @@ def updateDetails(deviceType,deviceID):
                     {"Device Attribute": "Protocol","Value": str(switch.protocol)},
                     {"Device Attribute": "Capabilities","Value": str(switch.switchCapabilities)},
                 ]
+                flowTable= []
+                for flow in switch.flows:
+                    flowTable.append([{
+                        "Port In":flow['portIn'],
+                        "Source":str(flow['sourceIP']+"("+flow['sourceMAC']+")"),
+                        "Destination":str(flow['destinationIP']+"("+flow['destinationMAC']+")"),
+                        "Protocol":flow['protocol'],
+                        "Operation":flow['operation'],
+                    }])
                 for portIndex in range(len(switch.portIDs)):
                     details.append({"Device Attribute": "Port Number", "Value": str(switch.portIDs[portIndex])})
                     details.append({"Device Attribute": "MAC address", "Value": switch.portMACs[portIndex]})
@@ -383,7 +396,7 @@ def updateDetails(deviceType,deviceID):
                     details.append({"Device Attribute": "Packets received", "Value": str(switch.portStatistics[portIndex].RXPkts)+" pkts ("+str(switch.portStatistics[portIndex].RXBytes)+" bytes)"})
                 selectedDevice.deviceId=deviceID 
                 selectedDevice.deviceType=deviceType
-                return details 
+                return details,flowTable
     elif deviceType == "Host":
         for host in networkDescription.hosts:
             if host.MAC==deviceID:
@@ -394,7 +407,7 @@ def updateDetails(deviceType,deviceID):
                 ]
                 selectedDevice.deviceId=deviceID 
                 selectedDevice.deviceType=deviceType
-                return details 
+                return details, []
     return dash.no_update
 
 if __name__ == '__main__':

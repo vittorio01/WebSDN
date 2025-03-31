@@ -77,7 +77,7 @@
 }
 
 #topologyDiv {
-    height: 100%; 
+    height: 60%; 
     width: 100%;
     margin: 0;
     transition: width 0.05s ease-in-out;
@@ -90,16 +90,31 @@
 }
 
 .topBarButton {
-    padding-left: 15px;
-    padding-right: 15px;
+    margin-left: 15px;
+    margin-right: 15px;
+    padding: 2px;
     background-color: transparent;
     border: none;
+    cursor: pointer;
+
+}
+
+.topBarButton-active {
+    border-bottom: 3px solid rgba(255, 255, 255, 0.911);
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    margin-left: 15px;
+    margin-right: 15px;
+    padding: 2px;
+    background-color: transparent;
     cursor: pointer;
 }
 
 #detailsIcon {
     font-size: 22px;
     color: white;
+    
 }
 
 #flowTableIcon {
@@ -114,7 +129,7 @@
 }
 
 #switchFlowTableDiv {
-    height: 00%; 
+    height: 40%; 
     width: 100%;
     transition: height 0.05s ease-in-out;
 }
