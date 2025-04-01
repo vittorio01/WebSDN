@@ -88,7 +88,7 @@ function toggleDetails() {
     let originalRightTransition=rightDiv.style.transition;
     detailsDiv.style.transition = "width 0.5s ease-in-out";
     rightDiv.style.transition = "width 0.5s ease-in-out";
-    if (detailsDiv.style.width == "0%") {
+    if (detailsButton.className == 'topBarButton') {
         detailsDiv.style.width = "40%";
         rightDiv.style.width="60%";
         detailsButton.className = 'topBarButton-active';
@@ -112,7 +112,7 @@ function toggleFlowTable() {
     let flowTableButton=document.getElementById("flowTableButton");
     switchFlowTableDiv.style.transition = "height 0.5s ease-in-out";
     topologyDiv.style.transition = "height 0.5s ease-in-out";
-    if (switchFlowTableDiv.style.height == "0%") {
+    if (flowTableButton.className == 'topBarButton') {
         switchFlowTableDiv.style.height = "40%";
         topologyDiv.style.height = "60%";
         flowTableButton.className = 'topBarButton-active';

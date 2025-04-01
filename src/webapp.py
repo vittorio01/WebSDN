@@ -116,10 +116,10 @@ app.layout = html.Div([
             html.Div([
                 html.Button([
                     html.I(className="fa-solid fa-table-list", id="detailsIcon")
-                ], id="detailsButton",className="topBarButton-active", n_clicks=0),
+                ], id="detailsButton",className="topBarButton", n_clicks=0),
                 html.Button([
                     html.I(className="fa-solid fa-table", id="flowTableIcon")
-                ], id="flowTableButton",className="topBarButton-active", n_clicks=0),
+                ], id="flowTableButton",className="topBarButton", n_clicks=0),
                 html.H1("SDN Network Layout",id="topBarText"),
             ],id="topBarDiv"), 
             html.Div([
@@ -336,7 +336,7 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
             new_details = updateDetails(selectedDevice.deviceType, selectedDevice.deviceId)
             if new_details == current_details:
                 return dash.no_update,dash.no_update, scroll_position
-            return new_details, scroll_position
+            return new_details[0],new_details[1], scroll_position
 
     elif trigger_id == "topology":
         if selected_nodes:
@@ -352,7 +352,7 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
             new_details = updateDetails(deviceType, node_id)
             if new_details == current_details:
                 return dash.no_update,dash.no_update, scroll_position
-            return new_details, scroll_position
+            return new_details[0],new_details[1], scroll_position
 
     elif trigger_id == "deviceListGrid":
         if cell:
@@ -365,7 +365,7 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
                 new_details = updateDetails(deviceType, deviceID)
                 if new_details == current_details:
                     return dash.no_update,dash.no_update,  scroll_position
-                return new_details, scroll_position
+                return new_details[0],new_details[1], scroll_position
 
     return dash.no_update, dash.no_update, scroll_position 
 
@@ -380,13 +380,13 @@ def updateDetails(deviceType,deviceID):
                 ]
                 flowTable= []
                 for flow in switch.flows:
-                    flowTable.append([{
+                    flowTable.append({
                         "Port In":flow['portIn'],
                         "Source":str(flow['sourceIP']+"("+flow['sourceMAC']+")"),
                         "Destination":str(flow['destinationIP']+"("+flow['destinationMAC']+")"),
                         "Protocol":flow['protocol'],
                         "Operation":flow['operation'],
-                    }])
+                    })
                 for portIndex in range(len(switch.portIDs)):
                     details.append({"Device Attribute": "Port Number", "Value": str(switch.portIDs[portIndex])})
                     details.append({"Device Attribute": "MAC address", "Value": switch.portMACs[portIndex]})

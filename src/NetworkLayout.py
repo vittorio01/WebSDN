@@ -328,7 +328,7 @@ class Switch():
     #match -> istance of OFPMatch 
     #buffer_id -> buffer position (if specified)
     #idleTimeout, hardTimeout -> integer values if specified
-    def addFlowDirective(self,actions=None,priority=0,buffer_id=None,idleTimeout=0,hardTimeout=0, flowPortIn=None,flowSourceMAC=None,flowSourceIP=None,flowDestinationMAC=None,flowDestinationIP=None,flowEthType=None,flowArpOp=None):
+    def addFlowDirective(self,actions=None,priority=0,buffer_id=None,idleTimeout=0,hardTimeout=0, flowPortIn=None,flowSourceMAC=None,flowSourceIP=None,flowDestinationMAC=None,flowDestinationIP=None,flowEthType=None,flowArpOp=None, newSourceMAC=None, outputPort=None):
         matchFields={}
         matchDescription={
             'portIn':"*",
@@ -395,19 +395,25 @@ class Switch():
         else:
             instructions = [self.parser.OFPInstructionActions(self.protocol.OFPIT_APPLY_ACTIONS, actions)]
 
-        if buffer_id==None:
-            switchMessage=self.parser.OFPFlowMod(datapath=self.datapath,priority=priority,match=match,instructions=instructions,idle_timeout=idleTimeout,hard_timeout=hardTimeout)
-        else:
-            switchMessage=self.parser.OFPFLowMod(datapath=self.datapath,buffer_id=buffer_id,priority=priority,match=match,instructions=instructions,idle_timeout=idleTimeout,hard_timeout=hardTimeout)
-        self.datapath.send_msg(switchMessage)
-
         flowOperation=""
         if actions is not None:
             for action in actions:
                 if isinstance(action,self.parser.OFPActionOutput):
-                    flowOperation=flowOperation+"forward to "+str(action.port)+" ,"
-            matchDescription["Operation"]=flowOperation
-            
+                    flowOperation+="forward ("+str(outputPort)+")," 
+                elif isinstance(action,self.parser.OFPActionSetField):
+                    flowOperation+="change MAC source ("+str(newSourceMAC)+"), "
+
+            matchDescription["operation"]=flowOperation
+
+        for flow in self.flows.flows:
+            if flow['match']== match:
+                return 
+        
+        if buffer_id==None:
+            switchMessage=self.parser.OFPFlowMod(datapath=self.datapath,priority=priority,match=match,instructions=instructions,idle_timeout=idleTimeout,hard_timeout=hardTimeout,flags=self.protocol.OFPFF_SEND_FLOW_REM)
+        else:
+            switchMessage=self.parser.OFPFLowMod(datapath=self.datapath,buffer_id=buffer_id,priority=priority,match=match,instructions=instructions,idle_timeout=idleTimeout,hard_timeout=hardTimeout,flags=self.protocol.OFPFF_SEND_FLOW_REM)
+        self.datapath.send_msg(switchMessage)
         self.flows.addFlow(match,matchDescription)
     
     def removeFlowDirective(self,match):
@@ -587,7 +593,6 @@ class NetworkLayout:
         if host==None:
             if AddressType.verify(address)!=AddressType.MAC: return None
             for switch in self.switches:
-                print(switch.portMACs)
                 if switch.isSwitchPort(address):
                     return switch 
             return None
@@ -689,7 +694,8 @@ class NetworkLayout:
     def updateSwitchStatistics(self,switchID,message):
         switch=self.getSwitch(switchID)
         switch.updatePortStatistics(message)
-        
+    
+
     '''
     def updateSwitchPort(self,switchID,message):
         switch=self.getSwitch(switchID)

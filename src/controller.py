@@ -23,7 +23,7 @@ class Controller(app_manager.RyuApp):
     IPv4_ICMP = 1
     IPv6_TCP=6
     IPv6_UDP=17
-    verbosity=1
+    verbosity=0
     #verbosity level. Console info messages are filtered using a verbosity level that can be setted as an argument when launching the SDN controller. Higher values means more info messages.
 
 
@@ -105,7 +105,7 @@ class Controller(app_manager.RyuApp):
             flow_removed_mask = (1 << switch.protocol.OFPRR_IDLE_TIMEOUT | 1 << switch.protocol.OFPRR_HARD_TIMEOUT | 1 << switch.protocol.OFPRR_DELETE)
             switch.datapath.send_msg(switch.parser.OFPSetAsync(switch.datapath,[packet_in_mask, 0],[port_status_mask, 0],[flow_removed_mask, 0]))
 
-            switch.addFlowDirective(actions=[switch.parser.OFPActionOutput(switch.protocol.OFPP_CONTROLLER,switch.protocol.OFPCML_NO_BUFFER)])
+            switch.addFlowDirective(actions=[switch.parser.OFPActionOutput(switch.protocol.OFPP_CONTROLLER,switch.protocol.OFPCML_NO_BUFFER)],outputPort=switch.protocol.OFPP_CONTROLLER)
     
     #handler for port descriptions
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
@@ -135,6 +135,12 @@ class Controller(app_manager.RyuApp):
             self.info("Modified port in switch ",ev.msg.datapath.id,type=0,verbosityLevel=0)
             self.info("Port:",port.port_no,", ",port.hw_addr, ", ",port.state,", ",port.config,type=0,verbosityLevel=1)
     '''
+
+    @set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
+    def flow_removed_handler(self, ev):
+        match = ev.msg.match
+        switch =network.getSwitch(ev.msg.datapath.id)
+        switch.removeFlowDirective(match)
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_status_handler(self, ev):
@@ -230,7 +236,7 @@ class Controller(app_manager.RyuApp):
                     self.info("Adding flow rule for device ",switch.datapathID,": IPv6 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
                     
                     #registering a flow rule for the current switch to avoid to launch again the algoithm
-                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=100,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IPV6)
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=10,outputPort=switchOutPortID,newSourceMAC=switchOutPortMAC,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IPV6)
 
                     #the packet is then forwarded to the output port
                     network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -298,7 +304,7 @@ class Controller(app_manager.RyuApp):
                     self.info("Adding flow rule for device ",switch.datapathID,": IPv4 from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
                     
                     #registering a flow rule for the current switch to avoid to launch again the algoithm
-                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=100,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IP)
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=10,outputPort=switchOutPortID,newSourceMAC=switchOutPortMAC,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_IP)
 
                     #the packet is then forwarded to the output port
                     network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
@@ -383,7 +389,7 @@ class Controller(app_manager.RyuApp):
                     self.info("Adding flow rule for device ",switch.datapathID,": ARP reply from port ",switchPortInID," forward to port ",switchOutPortID," (",switchOutPortMAC,")",type=3,verbosityLevel=0)
                     
                     #registering a flow rule for the current switch to avoid to launch again the algoithm
-                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=100,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_ARP,flowArpOp=2)
+                    switch.addFlowDirective(priority=100,actions=[switch.parser.OFPActionSetField(eth_src=switchOutPortMAC),switch.parser.OFPActionOutput(switchOutPortID)],hardTimeout=10,outputPort=switchOutPortID,newSourceMAC=switchOutPortMAC,flowPortIn=switchPortInID,flowSourceMAC=None,flowSourceIP=sourceIP,flowDestinationMAC=None,flowDestinationIP=destinationIP,flowEthType=ether_types.ETH_TYPE_ARP,flowArpOp=2)
 
                     #the packet is then forwarded to the output port
                     network.forwardPacket(packetIn=packetIn,switch=switch,outputPort=switchOutPortID,inputPort=switchPortInID,buffer_id=msg.buffer_id)
