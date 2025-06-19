@@ -1,6 +1,22 @@
 ## WebSDN 
 WebSDN is an implementation of a SDN network controller in Ryu connected with a dedicated web interface for visualizing the connections and the traffic of the available switches. 
 
+The interface in divided in two functional blocks:
+- The **controller**, a Ryu interface which controls the SDN switched in the network and manages the connection between the hosts. At the same time, it maintains all information about the network layout in a dedicated class `NetworkLayout` and periodically retreive the status of the switches
+- The **webapp**, powered by dash, which collects data from the controller and represents the structure of the network, the information of hosts and switches and the traffic in real time. 
+
+These two programs are launched in two separate instances and communicates each other using Flask, a lightweight restAPI which hosts a custom json file. In particular:
+- The controller periodically converts `NetworkLayout` into a json formats and pass it to a flask instance `/network_status` on the local port 5000. 
+- The webapp every 5 seconds request the json and converts it into a visible format using tables and a dedicated graph. 
+
+![The webapp frontend presentation](docs/webapp.png)
+
+The webapp is able to show:
+- A graph of the network layout where elements can be physically dragged by the user.
+- A table containing a list of connections between the devices and also the status (active or not).
+- A table which shows information about a selected device (switch or host).
+- A table which lists the flow rules adopted by the switched. 
+
 ## Repository structure ## 
 The repositoriy contains scripts and files for different functions of webSDN:
 - `src\` contains the source code for the implementation of the Ryu controller and the web interface. 
@@ -51,8 +67,6 @@ There is also the possibility to use vagrant to create an up to date virtual env
 
 The VM image have also mininet preinstalled, useful for testing SDN switches in an emulated network. The repository contains also a convenience script used for launching a custom network layout specified in the folder `mininet/` in a simple way:
 ```
-./mininet_run topology_loop.py
+./mininet_run topology_loop
 ```
 This script launches an interactive shell with mininet. To use mininet and webSDN at the same time with the VM is it recommended to open an SSH port and create two sessions (one for mininet and one for the application). 
-
-![Port forwarding in Virtualbox](docs/ports.png)
