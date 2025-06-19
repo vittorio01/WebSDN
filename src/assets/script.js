@@ -1,3 +1,5 @@
+//scripts that defines the behaviour for dragging the corners and redimensioning the tables.
+
 document.addEventListener("DOMContentLoaded", function() {
     const observer = new MutationObserver(function(mutations) {
         let hBar = document.getElementById("hBar1");
@@ -46,7 +48,7 @@ document.addEventListener("DOMContentLoaded", function() {
     observer.observe(document.body, { childList: true, subtree: true });
 });
 
-
+//Resize for vertical corner
 function resizeVertical(e) {
     let detailsDiv = document.getElementById("detailsDiv");
     let rightDiv = document.getElementById("rightDiv");
@@ -58,6 +60,7 @@ function resizeVertical(e) {
     }
 }
 
+//Resize for the second horizontal corner
 function resizeHorizontal2(e) {
     let switchFlowTableDiv = document.getElementById("switchFlowTableDiv");
     let topologyDiv = document.getElementById("topologyDiv");
@@ -69,6 +72,9 @@ function resizeHorizontal2(e) {
     }
 
 }
+
+//Resize for the first horizontal corner
+
 function resizeHorizontal(e) {
     let deviceListDiv = document.getElementById("deviceListDiv");
     let deviceDetailsDiv = document.getElementById("deviceDetailsDiv");
@@ -80,7 +86,7 @@ function resizeHorizontal(e) {
     }
 }
 
-
+//Behavuour for toggling the details button
 function toggleDetails() {
     let detailsDiv = document.getElementById("detailsDiv");
     let rightDiv = document.getElementById("rightDiv");
@@ -104,6 +110,7 @@ function toggleDetails() {
     }, 500); 
 }
 
+//Behavuour for toggling the flow table button
 function toggleFlowTable() {
     let switchFlowTableDiv = document.getElementById("switchFlowTableDiv");
     let topologyDiv = document.getElementById("topologyDiv");

@@ -7,6 +7,8 @@ import dash_draggable as draggable
 import requests
 import json
 
+
+#Definition of digital version of NetworkLayout class. 
 class PortStatisticsDescriptor():
     def __init__(self):
         self.RXPkts=0
@@ -63,8 +65,10 @@ class selectedDetailsDevice():
 networkDescription = NetworkDescriptor()
 selectedDevice = selectedDetailsDevice()
 
+#This app uses font-awesome for some icons
 app = dash.Dash(__name__,external_stylesheets=["https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"])
 
+#definition of the tables' labels
 deviceListColumnDefs = [
     {"field":"Device"},
     {"field":"Connected with"},
@@ -82,13 +86,14 @@ switchFlowTableColumnDefs= [
     {"field":"Operation"},
 ]
 
-
+#definition of the HTML layout in dash format.
 app.layout = html.Div([
     dcc.Store(id="stored-elements", data=[]),
     dcc.Store(id="grid-update-trigger", data=0),
     html.Div([
         html.Div([
             html.Div([
+                #Device list
                 dag.AgGrid(
                     id="deviceListGrid",
                     columnSize="sizeToFit",
@@ -99,6 +104,7 @@ app.layout = html.Div([
             ],id="deviceListDiv"),
             html.Div([],className="hBar",id="hBar1"),
             html.Div([
+                #Device details
                 dag.AgGrid(
                     id="deviceDetailsGrid",
                     columnSize="sizeToFit",
@@ -114,6 +120,7 @@ app.layout = html.Div([
         html.Div([],id="vBar"),
         html.Div([
             html.Div([
+                #Top bar button
                 html.Button([
                     html.I(className="fa-solid fa-table-list", id="detailsIcon")
                 ], id="detailsButton",className="topBarButton", n_clicks=0),
@@ -123,6 +130,7 @@ app.layout = html.Div([
                 html.H1("SDN Network Layout",id="topBarText"),
             ],id="topBarDiv"), 
             html.Div([
+                #Network graph
                 cyto.Cytoscape(
                 id="topology",
                 style={"width":"100%","height":"100%"},
@@ -168,15 +176,16 @@ app.layout = html.Div([
                         }
                     }
                     ],
-                zoomingEnabled=True,  # Disabilita zoom
-                userPanningEnabled=True,  # Disabilita pan
-                userZoomingEnabled=True,  # Disabilita zoom con la rotella del mouse
-                boxSelectionEnabled=False,  # Disabilita la selezione dei nodi tramite il box di selezione
-                autounselectify=False,  # Non permette la selezione di nodi (anche se cliccati)
+                zoomingEnabled=True,
+                userPanningEnabled=True, 
+                userZoomingEnabled=True,
+                boxSelectionEnabled=False, 
+                autounselectify=False,  
                 ),
             ],id="topologyDiv"),
             html.Div([],className="hBar",id="hBar2"), 
             html.Div([
+                #switch flow table
                 dag.AgGrid(
                     id="switchFlowTableGrid",
                     columnSize="sizeToFit",
@@ -193,7 +202,7 @@ app.layout = html.Div([
     dcc.Interval(id="interval-component", interval=5000, n_intervals=0),
 ],id="pageDiv")
 
-
+#definition of callbacks for updating the graphs and the digital version of Network Layout
 @app.callback(
     [Output("deviceListGrid", "rowData"),
      Output("topology", "elements"),
@@ -210,14 +219,15 @@ app.layout = html.Div([
 
 def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
     try:
-        # Richiesta API Flask per ottenere lo stato della rete
         response = requests.get("http://localhost:5000/network_status")
         data = response.json()
 
+        #clearing old values
         networkDescription.switches.clear()
         networkDescription.hosts.clear()
         networkDescription.links.clear()
 
+        #gathering switches' information
         for switch in data["switches"]:
             newSwitch=SwitchDescriptor()
             newSwitch.datapathID=switch["datapathID"]
@@ -228,6 +238,7 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
             newSwitch.portSpeeds=switch["portSpeeds"]
             newSwitch.portStatistics=[]
             newSwitch.flows=switch['flows']
+            #gathering switch's ports
             for port in switch["portStatistics"]:
                 newPortStatistics=PortStatisticsDescriptor()
                 newPortStatistics.RXBytes=port["RXBytes"]
@@ -237,6 +248,7 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
                 newSwitch.portStatistics.append(newPortStatistics)
             networkDescription.switches.append(newSwitch)
 
+        #gathering hosts' informations
         for host in data["hosts"]:
             newHost=HostDescriptor()
             newHost.MAC=host["MAC"]
@@ -244,6 +256,7 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
             newHost.IPv6=host["IPv6"]
             networkDescription.hosts.append(newHost)
 
+        #gathering links' information
         for link in data["links"]:
             newLink=LinkDescriptor()
             newLink.type=link["type"]
@@ -260,6 +273,7 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
                 newLink.deviceMAC2=link["switchMACPort"]
             networkDescription.links.append(newLink)
         
+        #updating link table
         linkTableElements=[]
         for link in networkDescription.links:
             if link.type=="SS":
@@ -274,6 +288,8 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
                     "Connected with":"Switch "+str(link.device2)+" port "+str(networkDescription.getSwitchPortFromMAC(link.deviceMAC2)),
                     "Link Status":link.linkStatus,
                 })
+
+        #updating network graph
         topologyNodes=[]
         topologyEdges=[]
         for switch in networkDescription.switches:
@@ -297,22 +313,22 @@ def update_device_grids(n,current_zoom, current_pan,previous_elements,trigger):
                 }
             })
 
-
+        #if there are changes, then update the graph.
         new_elements = topologyNodes + topologyEdges
         if json.dumps(new_elements, sort_keys=True) == json.dumps(previous_elements, sort_keys=True):
             return linkTableElements, dash.no_update, current_zoom, current_pan, previous_elements, trigger + 1
         return linkTableElements, new_elements, current_zoom, current_pan, new_elements, trigger + 1
     except Exception as e:
-        print(f"Errore nel caricamento dei dati: {str(e)}")
+        print(f"Data loading error: {str(e)}")
         return [], [], 1, {"x": 0, "y": 0}, [], dash.no_update
 
 def newline_renderer(params):
-    # Sostituisce \n con <br> per i ritorni a capo
+
     if params.value:
-        return params.value.replace("\n", "<br>")  # Sostituisci \n con <br>
+        return params.value.replace("\n", "<br>") 
     return ""
  
-
+#callback for updating the device details
 @app.callback(
     [Output("deviceDetailsGrid", "rowData"),
      Output("switchFlowTableGrid", "rowData"),
@@ -369,6 +385,7 @@ def update_device_details_grid(selected_nodes, cell, trigger, current_details,sc
 
     return dash.no_update, dash.no_update, scroll_position 
 
+#function used for updating details table.
 def updateDetails(deviceType,deviceID):
     if deviceType == "Switch":
         for switch in networkDescription.switches:

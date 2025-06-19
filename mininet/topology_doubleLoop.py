@@ -1,9 +1,3 @@
-#Custom configuration with three hosts h1,h2,h3 and three switches s1,s2,s3:
-#                           h1 
-#                           |
-#                           s1
-#                         /    \
-#                 h2 ―― s2 ――― s3 ―― h3
 
 from mininet.topo import Topo
 
